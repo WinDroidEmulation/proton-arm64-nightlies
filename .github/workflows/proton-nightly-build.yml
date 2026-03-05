@@ -202,55 +202,18 @@ jobs:
       # 11. Add prefixPack.txz (reuse reference or generate)
       # --------------------------------------------------------
       - name: Add prefixPack.txz
-        run: |
-          # Write extraction script to a file to avoid YAML/heredoc issues
-          cat > /tmp/extract_prefix.py << 'SCRIPTEND'
-import zstandard, tarfile, sys, os, urllib.request
-
-ref_url = "https://github.com/K11MCH1/Winlator101/releases/download/wine_col/Proton-10-arm64ec-controller-fix.wcp"
-out_path = "wine-install/prefixPack.txz"
-
-print("Downloading reference .wcp to extract prefixPack.txz...")
-with urllib.request.urlopen(ref_url) as response:
-    dctx = zstandard.ZstdDecompressor()
-    with dctx.stream_reader(response) as reader:
-        with tarfile.open(fileobj=reader, mode="r|") as tf:
-            for member in tf:
-                name = member.name.lstrip("./")
-                if name == "prefixPack.txz":
-                    f = tf.extractfile(member)
-                    if f:
-                        with open(out_path, "wb") as out:
-                            out.write(f.read())
-                        print("Extracted prefixPack.txz ({} bytes)".format(os.path.getsize(out_path)))
-                        sys.exit(0)
-
-print("WARNING: prefixPack.txz not found in reference build")
-sys.exit(1)
-SCRIPTEND
-          python3 /tmp/extract_prefix.py
+        run: python3 build-scripts/scripts/extract_prefix.py
 
       # --------------------------------------------------------
       # 12. Generate profile.json
       # --------------------------------------------------------
       - name: Generate profile.json
         run: |
-          VERSION_NAME="10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}"
-          VERSION_CODE="${{ env.GIT_DATE }}"
-          cat > wine-install/profile.json << EOF
-          {
-            "type": "Proton",
-            "versionName": "${VERSION_NAME}",
-            "versionCode": ${VERSION_CODE},
-            "description": "Proton 10 ARM64 nightly build from commit ${{ env.GIT_HASH }} (${{ env.GIT_DATE }})",
-            "files": [],
-            "proton": {
-              "binPath": "bin",
-              "libPath": "lib",
-              "prefixPack": "prefixPack.txz"
-            }
-          }
-          EOF
+          python3 build-scripts/scripts/generate_profile.py \
+            "wine-install/profile.json" \
+            "10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}" \
+            "${{ env.GIT_DATE }}" \
+            "Proton 10 ARM64 nightly build from commit ${{ env.GIT_HASH }} (${{ env.GIT_DATE }})"
           cat wine-install/profile.json
 
       # --------------------------------------------------------
