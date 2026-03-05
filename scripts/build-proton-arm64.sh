@@ -98,10 +98,10 @@ fi
 # --- Clean if requested ---
 if [[ $CLEAN_BUILD -eq 1 ]]; then
     log "Cleaning build directory: $BUILD_DIR"
-    rm -rf "$BUILD_DIR/tools" "$BUILD_DIR/target" "$BUILD_DIR/install"
+    rm -rf "$BUILD_DIR/host" "$BUILD_DIR/target" "$BUILD_DIR/install"
 fi
 
-mkdir -p "$BUILD_DIR/tools" "$BUILD_DIR/target" "$BUILD_DIR/install"
+mkdir -p "$BUILD_DIR/host" "$BUILD_DIR/target" "$BUILD_DIR/install"
 
 # --- Git info ---
 GIT_HASH="unknown"
@@ -118,13 +118,36 @@ log "Version: $VERSION_NAME"
 # ============================================================
 if [[ $SKIP_CONFIGURE -eq 0 && $SKIP_TOOLS -eq 0 ]]; then
     log ""
-    log "--- Step 1: Configure host wine-tools ---"
+    log "--- Step 1: Prepare Wine build system (make_requests etc.) ---"
     (
-        cd "$BUILD_DIR/tools"
-        "$SOURCE_DIR/configure" \
+        cd "$SOURCE_DIR"
+        ./tools/make_requests
+        ./tools/make_specfiles
+        ./tools/make_makefiles
+        autoreconf -f
+    )
+
+    log "--- Step 1b: Configure host wine-tools ---"
+    (
+        cd "$BUILD_DIR/host"
+        env -u CC -u CXX "$SOURCE_DIR/configure" \
             --enable-win64 \
             --without-x \
             --without-freetype \
+            --without-gnutls \
+            --without-unwind \
+            --without-pulse \
+            --without-gstreamer \
+            --without-alsa \
+            --without-sdl \
+            --without-vulkan \
+            --without-cups \
+            --without-krb5 \
+            --without-netapi \
+            --without-gphoto \
+            --without-udev \
+            --without-capi \
+            --without-ffmpeg \
             2>&1
     )
     log "Host tools configured."
@@ -137,7 +160,16 @@ if [[ $SKIP_TOOLS -eq 0 ]]; then
     log ""
     log "--- Step 2: Build host wine-tools ---"
     TOOLS_START="$(date -u +%s)"
-    make -C "$BUILD_DIR/tools" __builtin__ -j"$JOBS"
+    # Build only the tool binaries needed for cross-compilation.
+    # toolsdir logic in makedep.c appends /tools/<name>, so --with-wine-tools
+    # must point to BUILD_DIR/host (not BUILD_DIR/host/tools).
+    make -C "$BUILD_DIR/host" -j"$JOBS" \
+        tools/makedep \
+        tools/winebuild/winebuild \
+        tools/widl/widl \
+        tools/wrc/wrc \
+        tools/wmc/wmc \
+        tools/winegcc/winegcc
     TOOLS_TIME=$(( $(date -u +%s) - TOOLS_START ))
     log "Host tools built in ${TOOLS_TIME}s"
 fi
@@ -150,19 +182,32 @@ if [[ $SKIP_CONFIGURE -eq 0 ]]; then
     log "--- Step 3: Configure ARM64 Android target ---"
     (
         cd "$BUILD_DIR/target"
+        PREFIX="/data/data/com.winlator.cmod/files/imagefs/usr/opt/wine"
         "$SOURCE_DIR/configure" \
             --host=aarch64-linux-android \
-            --with-wine-tools="$BUILD_DIR/tools" \
-            --prefix=/data/data/com.winlator/wine \
-            --bindir=bin \
-            --libdir=lib \
+            --with-wine-tools="$BUILD_DIR/host" \
+            --prefix="$PREFIX" \
+            --bindir="$PREFIX/bin" \
+            --libdir="$PREFIX/lib" \
             --enable-archs=aarch64,i386 \
             --without-x \
             --without-freetype \
+            --without-gnutls \
+            --without-unwind \
             --without-dbus \
-            --without-openldap \
             --without-sane \
             --without-netapi \
+            --without-pulse \
+            --without-gstreamer \
+            --without-alsa \
+            --without-sdl \
+            --without-vulkan \
+            --without-cups \
+            --without-krb5 \
+            --without-gphoto \
+            --without-udev \
+            --without-capi \
+            --without-ffmpeg \
             CC="$CC" \
             CXX="$CXX" \
             AR="$AR" \
