@@ -2,56 +2,31 @@ name: Proton ARM64 Nightly Build
 
 on:
   schedule:
-    - cron: '0 2 * * *'   # 2 AM UTC daily
-  workflow_dispatch:        # Manual trigger
-    inputs:
-      wine_ref:
-        description: 'Wine source ref (branch, tag, or commit)'
-        required: false
-        default: 'proton_10.0'
-      debug:
-        description: 'Enable debug output'
-        required: false
-        default: 'false'
-
-env:
-  # Primary Wine source: Valve bleeding-edge (most up-to-date Proton Wine commits).
-  # This is the exact branch ValveSoftware/Proton bleeding-edge pins its wine submodule to.
-  WINE_SOURCE_REPO: https://github.com/ValveSoftware/wine
-  WINE_REF: bleeding-edge
-  # GameNative supplies the Android/ARM64EC patch files and build scripts.
-  # We clone it separately to copy android/patches/ and build-scripts/ onto the bleeding-edge source.
-  GAMENATIVE_REPO: https://github.com/GameNative/proton-wine
-  GAMENATIVE_REF: proton_10.0
+    - cron: '0 2 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build Proton ARM64 Android
     runs-on: ubuntu-24.04
-    timeout-minutes: 360   # 6 hour limit
+    timeout-minutes: 360
 
     steps:
-      # --------------------------------------------------------
-      # 1. Free disk space
-      # --------------------------------------------------------
-      - name: Free disk space
+      - name: Free up disk space
         run: |
-          echo "Disk before cleanup:"
-          df -h
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
-          sudo apt-get clean
-          docker system prune -af || true
-          echo "Disk after cleanup:"
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           df -h
 
-      # --------------------------------------------------------
-      # 2. Install build dependencies
-      # --------------------------------------------------------
-      - name: Install dependencies
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Set up build environment
         run: |
           sudo dpkg --add-architecture i386
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get update
+          sudo apt-get install -y \
             build-essential \
             git \
             wget \
@@ -73,72 +48,32 @@ jobs:
             libpng-dev:i386 \
             zlib1g-dev \
             zlib1g-dev:i386 \
-            ccache \
             zstd \
-            python3-pip \
-            tar \
-            xz-utils
+            xz-utils \
+            python3-pip
           pip3 install zstandard --quiet
 
-      # --------------------------------------------------------
-      # 3. Clone Wine source (ValveSoftware/wine bleeding-edge)
-      # --------------------------------------------------------
-      - name: Clone Wine source (ValveSoftware/wine bleeding-edge)
+      - name: Clone Wine source (ValveSoftware bleeding-edge)
         run: |
-          git clone --depth=1 --branch "${{ env.WINE_REF }}" \
-            "${{ env.WINE_SOURCE_REPO }}" wine-source
-          echo "GIT_HASH=$(git -C wine-source rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "GIT_DATE=$(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')" >> $GITHUB_ENV
+          git clone --depth=1 --branch bleeding-edge \
+            https://github.com/ValveSoftware/wine wine-source
 
-      # --------------------------------------------------------
-      # 3b. Clone GameNative to get Android patches + build scripts
-      # --------------------------------------------------------
-      - name: Clone GameNative (patches + build scripts only)
+      - name: Clone GameNative patches and build scripts
         run: |
-          git clone --depth=1 --branch "${{ env.GAMENATIVE_REF }}" \
-            "${{ env.GAMENATIVE_REPO }}" gamenative-src
-          # Copy Android patch files and build scripts onto the bleeding-edge source tree.
-          # The patches are applied at configure time by build-step-arm64ec.sh --configure.
+          git clone --depth=1 --branch proton_10.0 \
+            https://github.com/GameNative/proton-wine gamenative-src
           cp -r gamenative-src/android wine-source/android
           cp -r gamenative-src/build-scripts wine-source/build-scripts
-          # Copy android_sysvshm if present
-          if [ -d gamenative-src/android/android_sysvshm ]; then
-            echo "android_sysvshm directory present."
-          fi
           rm -rf gamenative-src
-          echo "GameNative patches and build scripts layered onto bleeding-edge source."
 
-      - name: Report source state
-        run: |
-          echo "=== Source state ==="
-          echo "Wine base:  ValveSoftware/wine bleeding-edge @ ${{ env.GIT_HASH }} (${{ env.GIT_DATE }})"
-          echo "Patches:    GameNative/proton-wine ${{ env.GAMENATIVE_REF }}"
-          git -C wine-source log --oneline -5
-
-      # --------------------------------------------------------
-      # 4. Checkout this repo (packaging scripts)
-      # --------------------------------------------------------
-      - name: Checkout build scripts
-        uses: actions/checkout@v4
-        with:
-          path: build-scripts
-
-      # --------------------------------------------------------
-      # 5. Download termuxfs (provides sysroot + pre-built deps)
-      # --------------------------------------------------------
-      - name: Download termuxfs for aarch64
+      - name: Download and extract termuxfs for aarch64
         run: |
           mkdir -p $HOME/termuxfs/aarch64
           cd $HOME/termuxfs/aarch64
-          wget -q https://github.com/GameNative/termux-on-gha/releases/download/build-20260218/termuxfs-aarch64.tar
+          wget https://github.com/GameNative/termux-on-gha/releases/download/build-20260218/termuxfs-aarch64.tar
           tar -xf termuxfs-aarch64.tar
-          rm termuxfs-aarch64.tar
-          echo "termuxfs ready:"
-          ls -lh $HOME/termuxfs/aarch64/
+          ls -la $HOME/termuxfs/aarch64/
 
-      # --------------------------------------------------------
-      # 6. Android NDK r27d
-      # --------------------------------------------------------
       - name: Cache Android NDK
         id: cache-ndk
         uses: actions/cache@v4
@@ -146,19 +81,15 @@ jobs:
           path: ~/Android/Sdk/ndk/27.3.13750724
           key: android-ndk-r27d
 
-      - name: Download Android NDK r27d
+      - name: Set up Android NDK
         if: steps.cache-ndk.outputs.cache-hit != 'true'
         run: |
           mkdir -p $HOME/Android/Sdk/ndk
           cd $HOME/Android/Sdk/ndk
-          wget -q https://dl.google.com/android/repository/android-ndk-r27d-linux.zip
+          wget https://dl.google.com/android/repository/android-ndk-r27d-linux.zip
           unzip -q android-ndk-r27d-linux.zip
           mv android-ndk-r27d 27.3.13750724
-          rm android-ndk-r27d-linux.zip
 
-      # --------------------------------------------------------
-      # 7. bylaws/llvm-mingw toolchain
-      # --------------------------------------------------------
       - name: Cache LLVM MinGW toolchain
         id: cache-llvm-mingw
         uses: actions/cache@v4
@@ -166,26 +97,19 @@ jobs:
           path: ~/toolchains/llvm-mingw-20250920-ucrt-ubuntu-22.04-x86_64
           key: bylaws-llvm-mingw-20250920
 
-      - name: Download LLVM MinGW toolchain
+      - name: Set up LLVM MinGW toolchain
         if: steps.cache-llvm-mingw.outputs.cache-hit != 'true'
         run: |
           mkdir -p $HOME/toolchains
           cd $HOME/toolchains
-          wget -q https://github.com/bylaws/llvm-mingw/releases/download/20250920/llvm-mingw-20250920-ucrt-ubuntu-22.04-x86_64.tar.xz
+          wget https://github.com/bylaws/llvm-mingw/releases/download/20250920/llvm-mingw-20250920-ucrt-ubuntu-22.04-x86_64.tar.xz
           tar -xf llvm-mingw-20250920-ucrt-ubuntu-22.04-x86_64.tar.xz
-          rm llvm-mingw-20250920-ucrt-ubuntu-22.04-x86_64.tar.xz
 
-      # --------------------------------------------------------
-      # 8. Run autogen (Wine codegen pre-configure step)
-      # --------------------------------------------------------
       - name: Run autogen.sh
         run: |
           cd wine-source
           bash autogen.sh
 
-      # --------------------------------------------------------
-      # 9. Build host wine-tools
-      # --------------------------------------------------------
       - name: Cache wine-tools
         id: cache-wine-tools
         uses: actions/cache@v4
@@ -193,7 +117,7 @@ jobs:
           path: wine-source/wine-tools
           key: wine-tools-${{ hashFiles('wine-source/configure.ac', 'wine-source/configure') }}
 
-      - name: Build host wine-tools
+      - name: Build wine-tools
         if: steps.cache-wine-tools.outputs.cache-hit != 'true'
         run: |
           cd wine-source
@@ -202,232 +126,123 @@ jobs:
           ../configure --without-x --without-gstreamer --without-vulkan --without-wayland
           make -j$(nproc) __tooldeps__ nls/all
 
-      # --------------------------------------------------------
-      # 10. Build android_sysvshm library
-      # --------------------------------------------------------
-      - name: Build android_sysvshm
+      - name: Build sysvshm library
         run: |
-          export TOOLCHAIN="$HOME/Android/Sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export LLVM_MINGW_TOOLCHAIN="$HOME/toolchains/llvm-mingw-20250920-ucrt-ubuntu-22.04-x86_64/bin"
-          export PATH=$LLVM_MINGW_TOOLCHAIN:$PATH
           cd wine-source
           bash build-scripts/build-step-arm64ec.sh --build-sysvshm
 
-      # --------------------------------------------------------
-      # 11. Configure ARM64 target
-      # --------------------------------------------------------
-      - name: Configure ARM64 Android target
+      - name: Configure build
         run: |
           cd wine-source
           bash build-scripts/build-step-arm64ec.sh --configure
 
-      # --------------------------------------------------------
-      # 12. Build Wine ARM64
-      # --------------------------------------------------------
-      - name: Build Wine ARM64
+      - name: Build Proton
         run: |
           cd wine-source
-          bash build-scripts/build-step-arm64ec.sh --build 2>&1 | tee build.log
-          tail -5 build.log
+          bash build-scripts/build-step-arm64ec.sh --build
 
-      # --------------------------------------------------------
-      # 13. Install Wine ARM64
-      # GameNative's --install does `make install` without DESTDIR, which tries
-      # to write to the literal Android path /data/data/com.termux/... on the
-      # runner — that doesn't exist. We do the install ourselves with DESTDIR
-      # then copy the same files GameNative's script would have copied.
-      # --------------------------------------------------------
-      - name: Install Wine ARM64
+      - name: Install Proton
         run: |
-          STAGING="$HOME/wine-staging"
           OUTPUT_DIR="$HOME/compiled-files-aarch64"
-          # install_dir matches what build-step-arm64ec.sh sets:
-          # $deps/../opt/wine = termuxfs/.../files/opt/wine
           DEPS="$HOME/termuxfs/aarch64/data/data/com.termux/files/usr"
-          INSTALL_DIR="$DEPS/../opt/wine"
+          INSTALL_PREFIX="$DEPS/../opt/wine"
+          STAGING="$HOME/wine-staging"
 
-          mkdir -p "$STAGING" "$OUTPUT_DIR/bin" "$OUTPUT_DIR/lib" "$OUTPUT_DIR/share"
+          mkdir -p "$OUTPUT_DIR/bin" "$OUTPUT_DIR/lib" "$OUTPUT_DIR/share" "$STAGING"
 
-          # Install into staging area so the absolute prefix path is reachable
           make -C wine-source install DESTDIR="$STAGING" -j$(nproc)
 
-          # The installed tree is at $STAGING/$INSTALL_DIR — flatten it
-          STAGED_PREFIX="$STAGING$INSTALL_DIR"
-          if [ ! -d "$STAGED_PREFIX" ]; then
-            echo "ERROR: expected install tree at $STAGED_PREFIX"
-            find "$STAGING" -maxdepth 6 -type d | head -30
+          STAGED="$STAGING$INSTALL_PREFIX"
+          if [ ! -d "$STAGED" ]; then
+            echo "ERROR: install tree not found at $STAGED"
+            find "$STAGING" -maxdepth 6 -type d | head -20
             exit 1
           fi
 
-          # Copy output matching what GameNative's --install would produce
-          cp -r "$STAGED_PREFIX"/bin/wine*    "$OUTPUT_DIR/bin/" 2>/dev/null || true
-          cp -r "$STAGED_PREFIX"/bin/reg*     "$OUTPUT_DIR/bin/" 2>/dev/null || true
-          cp -r "$STAGED_PREFIX"/bin/msi*     "$OUTPUT_DIR/bin/" 2>/dev/null || true
-          cp -r "$STAGED_PREFIX"/bin/notepad  "$OUTPUT_DIR/bin/" 2>/dev/null || true
-          cp -r "$STAGED_PREFIX/lib/wine"     "$OUTPUT_DIR/lib/"
-          cp -r "$STAGED_PREFIX/share/wine"   "$OUTPUT_DIR/share/"
+          cp -r "$STAGED"/bin/wine*   "$OUTPUT_DIR/bin/" 2>/dev/null || true
+          cp -r "$STAGED"/bin/reg*    "$OUTPUT_DIR/bin/" 2>/dev/null || true
+          cp -r "$STAGED"/bin/msi*    "$OUTPUT_DIR/bin/" 2>/dev/null || true
+          cp -r "$STAGED"/bin/notepad "$OUTPUT_DIR/bin/" 2>/dev/null || true
+          cp -r "$STAGED/lib/wine"    "$OUTPUT_DIR/lib/"
+          cp -r "$STAGED/share/wine"  "$OUTPUT_DIR/share/"
 
-          echo "Install complete. Output:"
-          ls -lh "$OUTPUT_DIR/bin" "$OUTPUT_DIR/lib" "$OUTPUT_DIR/share"
-
-      # --------------------------------------------------------
-      # 14. Download prefixPack.txz
-      # --------------------------------------------------------
       - name: Download prefixPack.txz
         run: |
-          wget -q https://github.com/GameNative/bionic-prefix-files/raw/main/prefixPack-arm64ec.txz \
-            -O "$HOME/compiled-files-aarch64/prefixPack.txz"
+          wget https://github.com/GameNative/bionic-prefix-files/raw/main/prefixPack-arm64ec.txz \
+            -O $HOME/compiled-files-aarch64/prefixPack.txz
 
-      # --------------------------------------------------------
-      # 15. Generate profile.json
-      # --------------------------------------------------------
-      - name: Generate profile.json
-        run: |
-          python3 build-scripts/scripts/generate_profile.py \
-            "$HOME/compiled-files-aarch64/profile.json" \
-            "10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}" \
-            "${{ env.GIT_DATE }}" \
-            "Proton 10 ARM64 nightly build from commit ${{ env.GIT_HASH }} (${{ env.GIT_DATE }})"
-          cat "$HOME/compiled-files-aarch64/profile.json"
-
-      # --------------------------------------------------------
-      # 16. Package as .wcp (tar+zstd for GameNative/Winlator)
-      #     and .wcp.xz (tar+xz for Winlator CMOD)
-      # --------------------------------------------------------
-      - name: Package artifacts
+      - name: Generate profile.json files and package
         run: |
           OUTPUT_DIR="$HOME/compiled-files-aarch64"
-          VERSION_NAME="10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}"
-          mkdir -p output
+          GIT_HASH=$(git -C wine-source rev-parse --short HEAD)
+          GIT_DATE=$(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')
+          VERSION="10-arm64ec-nightly-${GIT_DATE}-${GIT_HASH}"
 
-          # Proton .wcp (zstd) — for GameNative / Winlator
-          WCP="output/proton-10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}.wcp"
+          # Proton profile
+          cat > "$OUTPUT_DIR/profile.json" << PROFILE
+          {
+            "type": "Proton",
+            "versionName": "${VERSION}",
+            "versionCode": 1,
+            "description": "Proton 10 ARM64 nightly ${GIT_DATE} (${GIT_HASH})",
+            "files": [],
+            "wine": {
+              "binPath": "bin",
+              "libPath": "lib",
+              "prefixPack": "prefixPack.txz"
+            }
+          }
+          PROFILE
+
+          mkdir -p "$GITHUB_WORKSPACE/output"
+
+          # .wcp (zstd) for standard Winlator / GameNative
           cd "$OUTPUT_DIR"
-          tar -cf - bin lib share prefixPack.txz profile.json | zstd -T0 -19 -o "$GITHUB_WORKSPACE/$WCP"
+          tar -cf - bin lib share prefixPack.txz profile.json \
+            | zstd -T0 -19 -o "$GITHUB_WORKSPACE/output/proton-${VERSION}.wcp"
+
+          # Wine profile for CMOD/Ludashi
+          cat > "$OUTPUT_DIR/profile.json" << PROFILE
+          {
+            "type": "Wine",
+            "versionName": "${VERSION}",
+            "versionCode": 0,
+            "description": "Proton 10 ARM64 nightly ${GIT_DATE} (${GIT_HASH})",
+            "files": [],
+            "wine": {
+              "binPath": "bin",
+              "libPath": "lib",
+              "prefixPack": "prefixPack.txz"
+            }
+          }
+          PROFILE
+
+          # .wcp.xz (xz) for Winlator CMOD / Ludashi
+          tar -cJf "$GITHUB_WORKSPACE/output/proton-wine-${VERSION}.wcp.xz" \
+            bin lib share prefixPack.txz profile.json
+
           cd "$GITHUB_WORKSPACE"
-          sha256sum "$WCP" > "${WCP}.sha256"
+          sha256sum output/proton-${VERSION}.wcp      > output/proton-${VERSION}.wcp.sha256
+          sha256sum output/proton-wine-${VERSION}.wcp.xz > output/proton-wine-${VERSION}.wcp.xz.sha256
 
-          # Wine .wcp.xz (xz) — for Winlator CMOD / Ludashi
-          # Generate Wine-type profile
-          python3 build-scripts/scripts/generate_profile.py \
-            "$OUTPUT_DIR/profile-wine.json" \
-            "10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}" \
-            "${{ env.GIT_DATE }}" \
-            "Proton 10 ARM64 nightly build from commit ${{ env.GIT_HASH }} (${{ env.GIT_DATE }})" \
-            wine
-          cp "$OUTPUT_DIR/profile-wine.json" "$OUTPUT_DIR/profile.json"
-          WCPXZ="output/proton-wine-10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}.wcp.xz"
-          cd "$OUTPUT_DIR"
-          tar -cJf "$GITHUB_WORKSPACE/$WCPXZ" bin lib share prefixPack.txz profile.json
-          cd "$GITHUB_WORKSPACE"
-          sha256sum "$WCPXZ" > "${WCPXZ}.sha256"
-
-          echo "OUTPUT_WCP=$(basename $WCP)" >> $GITHUB_ENV
-          echo "OUTPUT_WCPXZ=$(basename $WCPXZ)" >> $GITHUB_ENV
-
-          echo "Packages created:"
           ls -lh output/
 
-      # --------------------------------------------------------
-      # 17. Upload artifacts
-      # --------------------------------------------------------
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: proton-arm64-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}
-          path: |
-            output/*.wcp
-            output/*.wcp.xz
-            output/*.sha256
+          name: proton-arm64-nightly
+          path: output/
           retention-days: 30
 
-      # --------------------------------------------------------
-      # 18. Create GitHub Release
-      # --------------------------------------------------------
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}
-          name: "Proton 10 ARM64 Nightly (${{ env.GIT_DATE }})"
-          body: |
-            ## Proton 10 ARM64 Nightly Build
-
-            **Build date:** ${{ env.GIT_DATE }}
-            **Wine commit:** ${{ env.GIT_HASH }} (ValveSoftware/wine bleeding-edge)
-            **Patches:** GameNative/proton-wine Android + ARM64EC bylaws patches
-            **Target:** Android ARM64 (API 28+, bionic)
-            **Toolchain:** Android NDK r27d + bylaws/llvm-mingw-20250920
-
-            > Wine base is Valve's `bleeding-edge` branch — the most up-to-date Proton Wine,
-            > the exact branch that `ValveSoftware/Proton bleeding-edge` tracks.
-            > Android and ARM64EC patches are sourced from GameNative/proton-wine.
-            > This is an automated nightly build for testing purposes. Use at your own risk.
-
-            ### Installation
-
-            **For GameNative / Winlator (standard):**
-            1. Download `${{ env.OUTPUT_WCP }}`
-            2. Open Winlator > Settings > Wine Version > Import
-            3. Select the `.wcp` file
-
-            **For Winlator CMOD / Ludashi:**
-            1. Download `${{ env.OUTPUT_WCPXZ }}`
-            2. Import via the Wine Version settings
-
-            ### Verification
-            ```
-            sha256sum ${{ env.OUTPUT_WCP }}
-            sha256sum ${{ env.OUTPUT_WCPXZ }}
-            ```
-            Check against the `.sha256` files.
-
-            ### What's included
-            - Wine ARM64 (aarch64-linux-android, bionic)
-            - ARM64EC PE DLLs (arm64ec-windows)
-            - ARM64 PE DLLs (aarch64-windows)
-            - 32-bit PE DLLs (i386-windows) for WoW64
-            - Default Wine prefix (prefixPack.txz)
-            - Android-specific patches (networking, sysvshm, SDL, Vulkan, Pulse)
-            - ARM64EC bylaws patches (XSTATE, thread suspension, virtual memory)
-          files: |
-            output/*.wcp
-            output/*.wcp.xz
-            output/*.sha256
-          prerelease: true
-          generate_release_notes: false
+        run: |
+          GIT_HASH=$(git -C wine-source rev-parse --short HEAD)
+          GIT_DATE=$(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')
+          VERSION="10-arm64ec-nightly-${GIT_DATE}-${GIT_HASH}"
+          TAG="nightly-${GIT_DATE}-${GIT_HASH}"
+          gh release create "$TAG" output/* \
+            --title "Proton 10 ARM64 Nightly (${GIT_DATE})" \
+            --notes "Built from ValveSoftware/wine bleeding-edge @ ${GIT_HASH} with GameNative Android + ARM64EC patches. Automated nightly — use at your own risk." \
+            --prerelease
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # --------------------------------------------------------
-      # 19. Update latest.json
-      # --------------------------------------------------------
-      - name: Update latest.json
-        run: |
-          WCP_SHA=$(cut -d' ' -f1 "output/${{ env.OUTPUT_WCP }}.sha256")
-          WCPXZ_SHA=$(cut -d' ' -f1 "output/${{ env.OUTPUT_WCPXZ }}.sha256")
-          python3 build-scripts/scripts/generate_latest.py \
-            "latest.json" \
-            "10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}" \
-            "${{ env.GIT_DATE }}" \
-            "${{ env.GIT_HASH }}" \
-            "${{ env.OUTPUT_WCP }}" \
-            "$WCP_SHA" \
-            "${{ env.OUTPUT_WCPXZ }}" \
-            "$WCPXZ_SHA" \
-            "nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}"
-          cat latest.json
-
-      - name: Commit latest.json
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add latest.json
-          git diff --staged --quiet || git commit -m "chore: update latest.json for nightly ${{ env.GIT_DATE }}"
-          git push
-
-      # --------------------------------------------------------
-      # 20. ccache stats
-      # --------------------------------------------------------
-      - name: ccache stats
-        if: always()
-        run: ccache --show-stats || true
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
