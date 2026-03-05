@@ -238,3 +238,30 @@ open('${OUTPUT_DIR}/profile.json', 'w').write(json.dumps(profile, indent=2))
             --prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update latest.json
+        run: |
+          GIT_HASH=$(git -C wine-source rev-parse --short HEAD)
+          GIT_DATE=$(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')
+          VERSION="10-arm64ec-nightly-${GIT_DATE}-${GIT_HASH}"
+          WCP_SHA=$(cut -d' ' -f1 output/proton-${VERSION}.wcp.sha256)
+          WCPXZ_SHA=$(cut -d' ' -f1 output/proton-wine-${VERSION}.wcp.xz.sha256)
+          python3 scripts/generate_latest.py \
+            "latest.json" \
+            "${VERSION}" \
+            "${GIT_DATE}" \
+            "${GIT_HASH}" \
+            "proton-${VERSION}.wcp" \
+            "${WCP_SHA}" \
+            "proton-wine-${VERSION}.wcp.xz" \
+            "${WCPXZ_SHA}" \
+            "nightly-${GIT_DATE}-${GIT_HASH}"
+          cat latest.json
+
+      - name: Commit latest.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          git diff --staged --quiet || git commit -m "chore: update latest.json for nightly $(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')"
+          git push
