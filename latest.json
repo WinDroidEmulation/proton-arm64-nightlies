@@ -1,0 +1,9 @@
+{
+  "versionName": "10-arm64ec",
+  "date": "20250808",
+  "gitHash": "reference",
+  "fileName": "Proton-10-arm64ec-controller-fix.wcp",
+  "sha256": "",
+  "releaseTag": "wine_col",
+  "note": "This file is updated automatically by CI. Currently pointing to reference build."
+}

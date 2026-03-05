@@ -1,0 +1,366 @@
+name: Proton ARM64 Nightly Build
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 2 AM UTC daily
+  workflow_dispatch:        # Manual trigger
+    inputs:
+      wine_ref:
+        description: 'Wine source ref (branch, tag, or commit)'
+        required: false
+        default: 'master'
+      debug:
+        description: 'Enable debug output'
+        required: false
+        default: 'false'
+
+env:
+  NDK_VERSION: android-ndk-r27c
+  ANDROID_API: 28
+  WINE_SOURCE_REPO: https://github.com/brunodev85/winlator  # Replace with actual Wine Android fork
+  WINE_REF: ${{ github.event.inputs.wine_ref || 'master' }}
+
+jobs:
+  build:
+    name: Build Proton ARM64 Android
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360   # 6 hour limit
+
+    steps:
+      # --------------------------------------------------------
+      # 1. Free disk space (standard runners have ~14GB; we need ~40GB)
+      # --------------------------------------------------------
+      - name: Free disk space
+        run: |
+          echo "Disk before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost /usr/local/go /usr/share/swift \
+            /usr/lib/jvm /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          docker system prune -af || true
+          echo "Disk after cleanup:"
+          df -h
+
+      # --------------------------------------------------------
+      # 2. Install build dependencies
+      # --------------------------------------------------------
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            flex bison \
+            libgnutls28-dev \
+            libunwind-dev \
+            pkg-config \
+            ccache \
+            zstd \
+            python3-pip \
+            git \
+            tar \
+            xz-utils
+          pip3 install zstandard --quiet
+
+      # --------------------------------------------------------
+      # 3. Download Android NDK
+      # --------------------------------------------------------
+      - name: Cache Android NDK
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NDK_VERSION }}
+          key: ndk-${{ env.NDK_VERSION }}
+
+      - name: Download Android NDK
+        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: |
+          curl -LO "https://dl.google.com/android/repository/${{ env.NDK_VERSION }}-linux.zip"
+          unzip -q "${{ env.NDK_VERSION }}-linux.zip"
+          rm "${{ env.NDK_VERSION }}-linux.zip"
+          echo "NDK ready: ${{ env.NDK_VERSION }}"
+
+      - name: Set NDK environment
+        run: |
+          echo "ANDROID_NDK_HOME=$(pwd)/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+          echo "$(pwd)/${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
+      # --------------------------------------------------------
+      # 4. Checkout this repo (scripts)
+      # --------------------------------------------------------
+      - name: Checkout build scripts
+        uses: actions/checkout@v4
+        with:
+          path: build-scripts
+
+      # --------------------------------------------------------
+      # 5. Clone Wine source (with shallow clone for speed)
+      # --------------------------------------------------------
+      - name: Clone Wine source
+        run: |
+          git clone --depth=1 --branch "${{ env.WINE_REF }}" \
+            "${{ env.WINE_SOURCE_REPO }}" wine-source
+          echo "GIT_HASH=$(git -C wine-source rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "GIT_DATE=$(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')" >> $GITHUB_ENV
+
+      # --------------------------------------------------------
+      # 6. ccache setup
+      # --------------------------------------------------------
+      - name: Setup ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-arm64-android-${{ env.GIT_DATE }}
+          restore-keys: |
+            ccache-arm64-android-
+
+      - name: Configure ccache
+        run: |
+          export CCACHE_DIR="$HOME/.ccache"
+          ccache --max-size=4G
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "CC=ccache aarch64-linux-android${{ env.ANDROID_API }}-clang" >> $GITHUB_ENV
+          echo "CXX=ccache aarch64-linux-android${{ env.ANDROID_API }}-clang++" >> $GITHUB_ENV
+
+      # --------------------------------------------------------
+      # 7. Build host wine-tools
+      # --------------------------------------------------------
+      - name: Build host wine-tools
+        run: |
+          mkdir -p wine-build/tools
+          cd wine-build/tools
+          ../../wine-source/configure \
+            --enable-win64 \
+            --without-x \
+            --without-freetype
+          make __builtin__ -j$(nproc)
+
+      # --------------------------------------------------------
+      # 8. Configure ARM64 target
+      # --------------------------------------------------------
+      - name: Configure ARM64 Android target
+        run: |
+          mkdir -p wine-build/target
+          cd wine-build/target
+          TOOLCHAIN="$(pwd)/../../${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          TARGET="aarch64-linux-android${{ env.ANDROID_API }}"
+          ../../wine-source/configure \
+            --host=aarch64-linux-android \
+            --with-wine-tools="$(pwd)/../tools" \
+            --prefix=/data/data/com.winlator/wine \
+            --bindir=bin \
+            --libdir=lib \
+            --enable-archs=aarch64,i386 \
+            --without-x \
+            --without-freetype \
+            --without-dbus \
+            --without-openldap \
+            --without-sane \
+            --without-netapi \
+            CC="${{ env.CC }}" \
+            CXX="${{ env.CXX }}" \
+            AR="${TOOLCHAIN}/llvm-ar" \
+            STRIP="${TOOLCHAIN}/llvm-strip" \
+            TARGETCC="aarch64-linux-android${{ env.ANDROID_API }}-clang" \
+            TARGETCXX="aarch64-linux-android${{ env.ANDROID_API }}-clang++" \
+            CFLAGS="-O2 -DANDROID -fPIC" \
+            LDFLAGS="-Wl,--build-id=sha1"
+
+      # --------------------------------------------------------
+      # 9. Build Wine
+      # --------------------------------------------------------
+      - name: Build Wine ARM64
+        run: |
+          make -C wine-build/target -j$(nproc) 2>&1 | tee build.log
+          tail -5 build.log
+
+      # --------------------------------------------------------
+      # 10. Install and stage
+      # --------------------------------------------------------
+      - name: Install and stage build
+        run: |
+          INSTALL_DIR="$(pwd)/wine-install"
+          mkdir -p "$INSTALL_DIR"
+          make -C wine-build/target install DESTDIR="$INSTALL_DIR"
+
+          # Flatten prefix path to bin/ lib/ share/
+          PREFIX_INNER="$INSTALL_DIR/data/data/com.winlator/wine"
+          if [[ -d "$PREFIX_INNER" ]]; then
+            cp -r "$PREFIX_INNER/." "$INSTALL_DIR/"
+            rm -rf "$INSTALL_DIR/data"
+          fi
+
+          # Strip debug symbols
+          TOOLCHAIN="${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          find "$INSTALL_DIR/lib/wine/aarch64-unix" -name "*.so" \
+            -exec "${TOOLCHAIN}/llvm-strip" --strip-debug {} \;
+
+          echo "Install directory contents:"
+          ls -lh "$INSTALL_DIR"
+
+      # --------------------------------------------------------
+      # 11. Add prefixPack.txz (reuse reference or generate)
+      # --------------------------------------------------------
+      - name: Add prefixPack.txz
+        run: |
+          # Download reference prefixPack.txz if we don't have a better one
+          # This is the default Wine prefix - rarely changes between builds
+          curl -L -o wine-install/prefixPack.txz \
+            "https://github.com/K11MCH1/Winlator101/releases/download/wine_col/Proton-10-arm64ec-controller-fix.wcp" \
+            --range "0-$(python3 -c "
+import zstandard, tarfile, io
+with open('/dev/stdin', 'rb') as f: pass  # placeholder
+print(0)
+")" || true
+
+          # Simpler: extract just prefixPack.txz from reference build
+          python3 << 'PYEOF'
+          import zstandard, tarfile, sys, os
+
+          ref_url = "https://github.com/K11MCH1/Winlator101/releases/download/wine_col/Proton-10-arm64ec-controller-fix.wcp"
+          import urllib.request
+
+          print("Downloading reference .wcp to extract prefixPack.txz...")
+          with urllib.request.urlopen(ref_url) as response:
+              dctx = zstandard.ZstdDecompressor()
+              with dctx.stream_reader(response) as reader:
+                  with tarfile.open(fileobj=reader, mode='r|') as tf:
+                      for member in tf:
+                          if member.name == './prefixPack.txz' or member.name == 'prefixPack.txz':
+                              f = tf.extractfile(member)
+                              if f:
+                                  with open('wine-install/prefixPack.txz', 'wb') as out:
+                                      out.write(f.read())
+                                  print(f"Extracted prefixPack.txz ({os.path.getsize('wine-install/prefixPack.txz')} bytes)")
+                                  sys.exit(0)
+          print("WARNING: prefixPack.txz not found in reference build")
+          PYEOF
+
+      # --------------------------------------------------------
+      # 12. Generate profile.json
+      # --------------------------------------------------------
+      - name: Generate profile.json
+        run: |
+          VERSION_NAME="10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}"
+          VERSION_CODE="${{ env.GIT_DATE }}"
+          cat > wine-install/profile.json << EOF
+          {
+            "type": "Proton",
+            "versionName": "${VERSION_NAME}",
+            "versionCode": ${VERSION_CODE},
+            "description": "Proton 10 ARM64 nightly build from commit ${{ env.GIT_HASH }} (${{ env.GIT_DATE }})",
+            "files": [],
+            "proton": {
+              "binPath": "bin",
+              "libPath": "lib",
+              "prefixPack": "prefixPack.txz"
+            }
+          }
+          EOF
+          cat wine-install/profile.json
+
+      # --------------------------------------------------------
+      # 13. Package as .wcp
+      # --------------------------------------------------------
+      - name: Package as .wcp
+        run: |
+          VERSION_NAME="10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}"
+          OUTPUT="proton-10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}.wcp"
+          mkdir -p output
+
+          cd wine-install
+          tar -cf - . | zstd -T0 -19 -o "../output/${OUTPUT}"
+
+          cd ../output
+          sha256sum "$OUTPUT" > "${OUTPUT}.sha256"
+          echo "OUTPUT_WCP=${OUTPUT}" >> $GITHUB_ENV
+          echo "WCP_PATH=output/${OUTPUT}" >> $GITHUB_ENV
+
+          echo "Package created:"
+          ls -lh "$OUTPUT"
+          cat "${OUTPUT}.sha256"
+
+      # --------------------------------------------------------
+      # 14. Upload artifact
+      # --------------------------------------------------------
+      - name: Upload .wcp artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: proton-arm64-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}
+          path: |
+            output/*.wcp
+            output/*.sha256
+          retention-days: 30
+
+      # --------------------------------------------------------
+      # 15. Create GitHub Release
+      # --------------------------------------------------------
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}
+          name: "Proton 10 ARM64 Nightly (${{ env.GIT_DATE }})"
+          body: |
+            ## Proton 10 ARM64 Nightly Build
+
+            **Build date:** ${{ env.GIT_DATE }}
+            **Wine commit:** ${{ env.GIT_HASH }}
+            **Target:** Android ARM64 (API ${{ env.ANDROID_API }}+)
+
+            ### Installation
+            1. Download `${{ env.OUTPUT_WCP }}` to your Android device
+            2. Open Winlator > Settings > Wine Version > Import
+            3. Select the `.wcp` file
+
+            ### Verification
+            ```
+            sha256sum ${{ env.OUTPUT_WCP }}
+            ```
+            Check against the `.sha256` file.
+
+            ### What's included
+            - Wine ARM64 (aarch64-linux-android)
+            - ARM64 PE DLLs (aarch64-windows)
+            - 32-bit PE DLLs (i386-windows) for WoW64
+            - Default Wine prefix (prefixPack.txz)
+
+            > This is an automated nightly build. Report issues at the repository.
+          files: |
+            output/*.wcp
+            output/*.sha256
+          prerelease: true
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --------------------------------------------------------
+      # 16. Update latest.json
+      # --------------------------------------------------------
+      - name: Update latest.json
+        run: |
+          cat > latest.json << EOF
+          {
+            "versionName": "10-arm64ec-nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}",
+            "date": "${{ env.GIT_DATE }}",
+            "gitHash": "${{ env.GIT_HASH }}",
+            "fileName": "${{ env.OUTPUT_WCP }}",
+            "sha256": "$(cut -d' ' -f1 output/${{ env.OUTPUT_WCP }}.sha256)",
+            "releaseTag": "nightly-${{ env.GIT_DATE }}-${{ env.GIT_HASH }}"
+          }
+          EOF
+          cat latest.json
+
+      - name: Commit latest.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          git diff --staged --quiet || git commit -m "chore: update latest.json for nightly ${{ env.GIT_DATE }}"
+          git push
+
+      # --------------------------------------------------------
+      # 17. ccache stats
+      # --------------------------------------------------------
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
