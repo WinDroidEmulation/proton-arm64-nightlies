@@ -80,6 +80,14 @@ jobs:
             wine-source/build-scripts/build-step-arm64ec.sh \
             wine-source
 
+          # Rewrite bare 'git apply' in the build script to use forgiving options
+          # (-C1, --ignore-whitespace) and continue on failure instead of aborting.
+          python3 scripts/patch_build_script.py \
+            wine-source/build-scripts/build-step-arm64ec.sh
+
+          # Fix any xinput2 guard issues that survive patch offset drift.
+          python3 scripts/fix_window_c.py wine-source
+
       - name: Download and extract termuxfs for aarch64
         run: |
           mkdir -p $HOME/termuxfs/aarch64

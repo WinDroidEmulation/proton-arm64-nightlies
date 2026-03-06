@@ -34,6 +34,7 @@ ALREADY_APPLIED = {
     "test-bylaws/dlls_wow64_virtual_c.patch":         ("dlls/wow64/virtual.c",         "old_prot_ptr"),
     "test-bylaws/server_process_c.patch":             ("server/process.c",             "bypass_proc_suspend"),
     "test-bylaws/dlls_ntdll_unix_process_c.patch":    ("dlls/ntdll/unix/process.c",    "ProcessFexHardwareTso"),
+    "test-bylaws/dlls_wow64_process_c.patch":         ("dlls/wow64/process.c",         "Wow64SuspendLocalThread"),
     "test-bylaws/server_thread_h.patch":              ("server/thread.h",              "bypass_proc_suspend"),
     "test-bylaws/server_thread_c.patch":              ("server/thread.c",              "bypass_proc_suspend"),
     "test-bylaws/dlls_ntdll_unix_thread_c.patch":     ("dlls/ntdll/unix/thread.c",     "BYPASS_PROCESS_FREEZE"),

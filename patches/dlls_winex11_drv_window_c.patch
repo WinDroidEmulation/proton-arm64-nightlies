@@ -72,14 +72,3 @@ diff --git a/dlls/winex11.drv/window.c b/dlls/winex11.drv/window.c
      set_initial_wm_hints( data->display, data->whole_window );
      set_wm_hints( data, 0 );
 
-@@ -2850,8 +2868,10 @@ BOOL X11DRV_CreateWindow( HWND hwnd )
-             if (!wcscmp( winstation_name, winsta0 ))
-             {
-                 /* listen to raw xinput event in the desktop window thread */
-+#ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
-                 data->xinput2_rawinput = TRUE;
-                 x11drv_xinput2_enable( data->display, DefaultRootWindow( data->display ) );
-+#endif
-             }
-         }
-         /* create the cursor clipping window */
