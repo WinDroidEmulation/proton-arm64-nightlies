@@ -175,7 +175,12 @@ if [[ $SKIP_CONFIGURE -eq 0 ]]; then
     log "--- Step 3: Configure ARM64 Android target ---"
     (
         cd "$BUILD_DIR/target"
-        PREFIX="/data/data/com.winlator.cmod/files/imagefs/usr/opt/wine"
+        APP_ID="${WINLATOR_APP_ID:-app.gamenative}"
+        if [[ "$APP_ID" == "com.winlator.cmod" ]]; then
+            PREFIX="/data/data/com.winlator.cmod/files/imagefs/usr/opt/wine"
+        else
+            PREFIX="/data/data/${APP_ID}/files/imagefs/opt/wine"
+        fi
         "$SOURCE_DIR/configure" \
             --host=aarch64-linux-android \
             --with-wine-tools="$BUILD_DIR/host" \
@@ -236,7 +241,12 @@ make -C "$BUILD_DIR/target" install DESTDIR="$INSTALL_DIR"
 
 # Reorganize to match expected .wcp layout
 # make install puts files under prefix; flatten to bin/ lib/ share/
-WINE_PREFIX_INNER="$INSTALL_DIR/data/data/com.winlator.cmod/files/imagefs/usr/opt/wine"
+APP_ID="${WINLATOR_APP_ID:-app.gamenative}"
+if [[ "$APP_ID" == "com.winlator.cmod" ]]; then
+    WINE_PREFIX_INNER="$INSTALL_DIR/data/data/com.winlator.cmod/files/imagefs/usr/opt/wine"
+else
+    WINE_PREFIX_INNER="$INSTALL_DIR/data/data/${APP_ID}/files/imagefs/opt/wine"
+fi
 if [[ -d "$WINE_PREFIX_INNER" ]]; then
     cp -r "$WINE_PREFIX_INNER/." "$INSTALL_DIR/"
     rm -rf "$INSTALL_DIR/data"
@@ -318,4 +328,5 @@ log "Total time: ${TOTAL_TIME}s ($(( TOTAL_TIME / 60 ))m)"
 log "Output:     $OUTPUT_WCP"
 log "SHA256:     $(cat "${OUTPUT_WCP}.sha256" | cut -d' ' -f1)"
 log "Size:       $(du -sh "$OUTPUT_WCP" | cut -f1)"
+
 

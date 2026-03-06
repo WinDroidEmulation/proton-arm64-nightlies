@@ -13,6 +13,14 @@ on:
         options:
           - ubuntu-24.04
           - self-hosted
+      target_app_id:
+        description: 'Target Android app id for hardcoded wine paths'
+        required: false
+        default: 'app.gamenative'
+        type: choice
+        options:
+          - app.gamenative
+          - com.winlator.cmod
 
 jobs:
   build:
@@ -104,7 +112,14 @@ jobs:
           # Rewrite the baked-in install prefix from the Termux CI path to the
           # Winlator Cmod path that GameNative rewrites at runtime via libredirect.
           # This ensures Wine's hardcoded WINEDLLPATH points somewhere the device can find.
-          sed -i 's|export install_dir=.*|export install_dir=/data/data/com.winlator.cmod/files/imagefs/usr/opt/wine|'             wine-source/build-scripts/build-step-arm64ec.sh
+          APP_ID="${{ github.event.inputs.target_app_id || 'app.gamenative' }}"
+          if [ "$APP_ID" = "com.winlator.cmod" ]; then
+            INSTALL_DIR="/data/data/com.winlator.cmod/files/imagefs/usr/opt/wine"
+          else
+            INSTALL_DIR="/data/data/${APP_ID}/files/imagefs/opt/wine"
+          fi
+          echo "Using install_dir=$INSTALL_DIR"
+          sed -i "s|export install_dir=.*|export install_dir=${INSTALL_DIR}|" wine-source/build-scripts/build-step-arm64ec.sh
 
       - name: Download and extract termuxfs for aarch64
         run: |
@@ -352,6 +367,9 @@ jobs:
           git diff --staged --quiet || git commit -m "chore: update latest.json for nightly ${GIT_DATE}"
           git pull --rebase origin HEAD
           git push
+
+
+
 
 
 
