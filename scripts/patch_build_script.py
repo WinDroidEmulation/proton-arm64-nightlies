@@ -12,9 +12,13 @@ with open(path) as f:
 
 txt = txt.replace(
     'git apply ./android/patches/$patch',
-    # Fail hard for critical wow64 suspend patch; be forgiving for others.
+    # For the critical wow64/process patch: try normal apply, then 3-way apply,
+    # then reverse-check for already-applied. Only fail if all of those fail.
     'if [ "$patch" = "test-bylaws/dlls_wow64_process_c.patch" ]; then '
     'git apply --ignore-whitespace -C1 ./android/patches/$patch'
+    ' || git apply --3way --ignore-space-change ./android/patches/$patch'
+    ' || git apply --ignore-whitespace -C1 -R --check ./android/patches/$patch 2>/dev/null'
+    ' && echo "ALREADY APPLIED (skipped): $patch"'
     ' || { echo "ERROR: critical patch failed: $patch"; exit 1; }; '
     'else '
     'git apply --ignore-whitespace -C1 ./android/patches/$patch 2>/dev/null'
