@@ -197,6 +197,9 @@ jobs:
             exit 1
           fi
 
+          echo "=== STAGED bin contents ==="
+          ls -la "$STAGED/bin/" || echo "(empty)"
+
           cp -r "$STAGED"/bin/wine*   "$OUTPUT_DIR/bin/" 2>/dev/null || true
           cp -r "$STAGED"/bin/reg*    "$OUTPUT_DIR/bin/" 2>/dev/null || true
           cp -r "$STAGED"/bin/msi*    "$OUTPUT_DIR/bin/" 2>/dev/null || true
@@ -204,17 +207,28 @@ jobs:
           cp -r "$STAGED/lib/wine"    "$OUTPUT_DIR/lib/"
           cp -r "$STAGED/share/wine"  "$OUTPUT_DIR/share/"
 
+          echo "=== OUTPUT_DIR bin contents after copy ==="
+          ls -la "$OUTPUT_DIR/bin/"
+
           # GameNative/Box64 looks for 'wine' (not 'wine64') in bin/
           # Create a 'wine' symlink pointing to wine64 if it doesn't exist
           if [ -f "$OUTPUT_DIR/bin/wine64" ] && [ ! -e "$OUTPUT_DIR/bin/wine" ]; then
             ln -s wine64 "$OUTPUT_DIR/bin/wine"
             echo "Created wine -> wine64 symlink"
           elif [ -e "$OUTPUT_DIR/bin/wine" ]; then
-            echo "wine binary already exists"
+            echo "wine binary already exists at $OUTPUT_DIR/bin/wine"
+            file "$OUTPUT_DIR/bin/wine" || true
           else
             echo "WARNING: wine64 not found in $OUTPUT_DIR/bin/"
-            ls "$OUTPUT_DIR/bin/"
           fi
+
+          echo "=== Final OUTPUT_DIR bin contents ==="
+          ls -la "$OUTPUT_DIR/bin/"
+          echo "=== wine binary type ==="
+          file "$OUTPUT_DIR/bin/wine" 2>/dev/null || echo "wine not found"
+          file "$OUTPUT_DIR/bin/wine64" 2>/dev/null || echo "wine64 not found"
+          echo "=== wine binary size ==="
+          wc -c "$OUTPUT_DIR/bin/wine" 2>/dev/null || true
 
       - name: Download prefixPack.txz
         run: |
@@ -226,7 +240,9 @@ jobs:
           OUTPUT_DIR="$HOME/compiled-files-aarch64"
           GIT_HASH=$(git -C wine-source rev-parse --short HEAD)
           GIT_DATE=$(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')
-          VERSION="10-arm64ec-nightly-${GIT_DATE}-${GIT_HASH}"
+          # versionName must end in -arm64ec so GameNative recognises it as arm64ec
+          # and extracts the .wcp. Use date+hash as build identifier before the suffix.
+          VERSION="proton-10.0-nightly-${GIT_DATE}-${GIT_HASH}-arm64ec"
 
           mkdir -p "$GITHUB_WORKSPACE/output"
 
@@ -273,7 +289,7 @@ jobs:
         run: |
           GIT_HASH=$(git -C wine-source rev-parse --short HEAD)
           GIT_DATE=$(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')
-          VERSION="10-arm64ec-nightly-${GIT_DATE}-${GIT_HASH}"
+          VERSION="proton-10.0-nightly-${GIT_DATE}-${GIT_HASH}-arm64ec"
           TAG="nightly-${GIT_DATE}-${GIT_HASH}"
           gh release create "$TAG" output/* \
             --title "Proton 10 ARM64 Nightly (${GIT_DATE})" \
@@ -286,7 +302,7 @@ jobs:
         run: |
           GIT_HASH=$(git -C wine-source rev-parse --short HEAD)
           GIT_DATE=$(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')
-          VERSION="10-arm64ec-nightly-${GIT_DATE}-${GIT_HASH}"
+          VERSION="proton-10.0-nightly-${GIT_DATE}-${GIT_HASH}-arm64ec"
           WCP_SHA=$(cut -d' ' -f1 output/proton-${VERSION}.wcp.sha256)
           WCPXZ_SHA=$(cut -d' ' -f1 output/proton-wine-${VERSION}.wcp.xz.sha256)
           python3 scripts/generate_latest.py \
@@ -306,5 +322,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add latest.json
-          git diff --staged --quiet || git commit -m "chore: update latest.json for nightly $(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')"
+          GIT_DATE=$(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')
+          git diff --staged --quiet || git commit -m "chore: update latest.json for nightly ${GIT_DATE}"
           git push
