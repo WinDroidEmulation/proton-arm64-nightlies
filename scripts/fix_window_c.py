@@ -16,35 +16,55 @@ import os
 import re
 
 
-def is_guarded_xinput2(lines, idx):
-    """Return True if line at idx is already inside HAVE_X11_EXTENSIONS_XINPUT2_H."""
-    depth = 0
+XINPUT2_IFDEF = "#ifdef HAVE_X11_EXTENSIONS_XINPUT2_H\n"
+XINPUT2_ENDIF = "#endif\n"
+
+
+def prev_nonblank_stripped(lines, idx):
+    """Return the stripped content of the nearest non-blank line before idx in list."""
     for j in range(idx - 1, -1, -1):
         s = lines[j].strip()
-        if s.startswith("#endif"):
-            depth += 1
-        elif s.startswith("#ifdef") or s.startswith("#if "):
-            if depth == 0:
-                return "HAVE_X11_EXTENSIONS_XINPUT2_H" in s
-            depth -= 1
-    return False
+        if s:
+            return s
+    return ""
 
 
 def apply_xinput2_guards(lines):
-    """Wrap bare x11drv_xinput2_enable calls with #ifdef HAVE_X11_EXTENSIONS_XINPUT2_H."""
+    """
+    Wrap bare xinput2-related lines with #ifdef HAVE_X11_EXTENSIONS_XINPUT2_H.
+    Handles both x11drv_xinput2_enable calls and xinput2_rawinput assignments.
+    Uses simple preceding-line check rather than full depth tracking.
+    """
     result = []
     changes = 0
     i = 0
     while i < len(lines):
         line = lines[i]
-        if "x11drv_xinput2_enable" in line:
-            if not is_guarded_xinput2(result + [line], len(result)):
-                result.append("#ifdef HAVE_X11_EXTENSIONS_XINPUT2_H\n")
-                result.append(line)
-                result.append("#endif\n")
+        needs_guard = (
+            "x11drv_xinput2_enable" in line or
+            ("xinput2_rawinput" in line and "=" in line)
+        )
+        if needs_guard:
+            prev = prev_nonblank_stripped(result, len(result))
+            already = prev == XINPUT2_IFDEF.strip() or "HAVE_X11_EXTENSIONS_XINPUT2_H" in prev
+            if not already:
+                # Collect consecutive xinput2 lines into one guarded block
+                block = [line]
+                j = i + 1
+                while j < len(lines):
+                    nl = lines[j]
+                    if "x11drv_xinput2_enable" in nl or ("xinput2_rawinput" in nl and "=" in nl):
+                        block.append(nl)
+                        j += 1
+                    else:
+                        break
+                result.append(XINPUT2_IFDEF)
+                result.extend(block)
+                result.append(XINPUT2_ENDIF)
                 changes += 1
-                print(f"  [xinput2 guard] {line.rstrip()}")
-                i += 1
+                for b in block:
+                    print(f"  [xinput2 guard] {b.rstrip()}")
+                i = j
                 continue
         result.append(line)
         i += 1
@@ -137,6 +157,7 @@ def apply_android_net_wm_pid(lines):
             m.group(2) +
             "#endif\n"
         )
+
 
     new_src, n = pattern.subn(replacer, src)
     if n == 0:

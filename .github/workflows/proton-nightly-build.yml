@@ -9,6 +9,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    permissions:
+      contents: write
 
     steps:
       - name: Free up disk space
@@ -85,7 +87,15 @@ jobs:
           # is corrupt (CRLF issue), so we add the function directly.
           python3 scripts/fix_wow64_process_c.py wine-source
 
+      - name: Cache termuxfs aarch64
+        id: cache-termuxfs
+        uses: actions/cache@v4
+        with:
+          path: ~/termuxfs/aarch64
+          key: termuxfs-aarch64-build-20260218
+
       - name: Download and extract termuxfs for aarch64
+        if: steps.cache-termuxfs.outputs.cache-hit != 'true'
         run: |
           mkdir -p $HOME/termuxfs/aarch64
           cd $HOME/termuxfs/aarch64
@@ -139,6 +149,7 @@ jobs:
         with:
           path: wine-source/wine-tools
           key: wine-tools-${{ hashFiles('wine-source/configure.ac', 'wine-source/configure') }}
+          restore-keys: wine-tools-
 
       - name: Build wine-tools
         if: steps.cache-wine-tools.outputs.cache-hit != 'true'
