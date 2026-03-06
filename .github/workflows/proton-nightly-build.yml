@@ -96,6 +96,11 @@ jobs:
           # the ntdll.so link step doesn't pull it in, causing undefined symbol.
           python3 scripts/fix_virtual_c.py wine-source
 
+          # Rewrite the baked-in install prefix from the Termux CI path to the
+          # Winlator Cmod path that GameNative rewrites at runtime via libredirect.
+          # This ensures Wine's hardcoded WINEDLLPATH points somewhere the device can find.
+          sed -i 's|export install_dir=.*|export install_dir=/data/data/com.winlator.cmod/files/imagefs/usr/opt/wine|'             wine-source/build-scripts/build-step-arm64ec.sh
+
       - name: Download and extract termuxfs for aarch64
         run: |
           TERMUX_DIR="$HOME/termuxfs/aarch64"
@@ -250,13 +255,21 @@ jobs:
 
           mkdir -p "$GITHUB_WORKSPACE/output"
 
-          # versionCode: use date as YYYYMMDD integer (matches GameNative convention)
-          VERSION_CODE=$(echo "${GIT_DATE}" | tr -d '-')
+          # versionCode: always 0 � avoids ambiguity when GameNative reconstructs
+          # the entry name as verName+"-"+versionCode (date already in verName)
+          VERSION_CODE=1
+
+          # GameNative prepends "proton-" to versionName to build the install dir path,
+          # so versionName in profile.json must NOT include the "proton-" prefix.
+          # e.g. VERSION=proton-10.0-nightly-...-arm64ec
+          #   -> PROFILE_VERSION=10.0-nightly-...-arm64ec
+          #   -> installs to imagefs/opt/proton-10.0-nightly-...-arm64ec/
+          PROFILE_VERSION="${VERSION#proton-}"
 
           # Proton profile — for standard Winlator / GameNative
           python3 scripts/generate_profile.py \
             "${OUTPUT_DIR}/profile.json" \
-            "${VERSION}" \
+            "${PROFILE_VERSION}" \
             "${VERSION_CODE}" \
             "Proton 10 ARM64 nightly ${GIT_DATE} (${GIT_HASH})"
 
@@ -267,7 +280,7 @@ jobs:
           # Wine profile — for Winlator CMOD / Ludashi
           python3 "$GITHUB_WORKSPACE/scripts/generate_profile.py" \
             "${OUTPUT_DIR}/profile.json" \
-            "${VERSION}" \
+            "${PROFILE_VERSION}" \
             "${VERSION_CODE}" \
             "Proton 10 ARM64 nightly ${GIT_DATE} (${GIT_HASH})" \
             wine
