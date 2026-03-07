@@ -2,7 +2,7 @@ name: Proton ARM64 Bleeding-Edge Build
 
 on:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '15 * * * *'
   workflow_dispatch:
     inputs:
       runner:
@@ -31,6 +31,11 @@ on:
         required: false
         default: 'proton_10.0'
         type: string
+      force_build:
+        description: 'Force a build even if upstream HEAD is unchanged'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build:
@@ -51,7 +56,44 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@v4
 
+      - name: Check upstream bleeding-edge head
+        id: upstream_check
+        run: |
+          WINE_REF="${{ github.event.inputs.wine_ref || 'bleeding-edge' }}"
+          FORCE_BUILD="${{ github.event.inputs.force_build || 'false' }}"
+          PREV_GIT_HASH="$(python3 -c 'import json; d=json.load(open("latest.json")); print(d.get("gitHash",""))')"
+
+          if printf '%s' "$WINE_REF" | grep -Eq '^[0-9a-fA-F]{7,40}$'; then
+            REMOTE_FULL_HASH="$WINE_REF"
+          else
+            REMOTE_FULL_HASH="$(git ls-remote https://github.com/ValveSoftware/wine "$WINE_REF" "refs/heads/$WINE_REF" "refs/tags/$WINE_REF" | awk 'NR==1 {print $1}')"
+          fi
+
+          if [ -z "$REMOTE_FULL_HASH" ]; then
+            echo "ERROR: could not resolve upstream ref $WINE_REF"
+            exit 1
+          fi
+
+          REMOTE_SHORT_HASH="$(printf '%s' "$REMOTE_FULL_HASH" | cut -c1-7)"
+          SKIP_BUILD=false
+          if [ "$FORCE_BUILD" != 'true' ] && [ "$REMOTE_SHORT_HASH" = "$PREV_GIT_HASH" ]; then
+            SKIP_BUILD=true
+          fi
+
+          echo "resolved_hash=$REMOTE_FULL_HASH" >> "$GITHUB_OUTPUT"
+          echo "resolved_short_hash=$REMOTE_SHORT_HASH" >> "$GITHUB_OUTPUT"
+          echo "skip_build=$SKIP_BUILD" >> "$GITHUB_OUTPUT"
+          echo "Previous gitHash: $PREV_GIT_HASH"
+          echo "Remote   gitHash: $REMOTE_SHORT_HASH"
+          echo "force_build=$FORCE_BUILD"
+          echo "skip_build=$SKIP_BUILD"
+
+      - name: Stop early when upstream is unchanged
+        if: steps.upstream_check.outputs.skip_build == 'true'
+        run: echo "Skipping build: upstream bleeding-edge HEAD matches latest.json"
+
       - name: Set up build environment
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
@@ -83,6 +125,7 @@ jobs:
             patch
 
       - name: Clone Wine source (ValveSoftware bleeding-edge by default)
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           rm -rf wine-source
           WINE_REF="${{ github.event.inputs.wine_ref || 'bleeding-edge' }}"
@@ -96,6 +139,7 @@ jobs:
           echo "Wine ref: $WINE_REF"
           git -C wine-source rev-parse HEAD
       - name: Clone GameNative patches and build scripts
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           GN_REF="${{ github.event.inputs.gamenative_ref || 'proton_10.0' }}"
           git clone --depth=1 --branch "$GN_REF" \
@@ -121,9 +165,8 @@ jobs:
           sed -i 's/atoi("WINE_X11FORCEGLX")/atoi(getenv("WINE_X11FORCEGLX"))/g' \
             wine-source/android/patches/dlls_winex11_drv_opengl_c.patch
 
-
+          # Comment out patches already merged into bleeding-edge (or handled by
           # fix_*.py scripts) so they don't get double-applied or fail the build.
-          python3 scripts/filter_patches.py \
             wine-source/build-scripts/build-step-arm64ec.sh \
             wine-source
 
@@ -179,6 +222,7 @@ jobs:
           sed -i "s|export RUNTIME_PATH=.*|export RUNTIME_PATH=\"${RUNTIME_PATH}\"|" wine-source/build-scripts/build-step-arm64ec.sh
 
       - name: Download and extract termuxfs for aarch64
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           TERMUX_DIR="$HOME/termuxfs/aarch64"
           if [ ! -d "$TERMUX_DIR/data/data/com.termux/files/usr/include" ]; then
@@ -193,6 +237,7 @@ jobs:
           fi
 
       - name: Set up Android NDK
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           NDK_DIR="$HOME/Android/Sdk/ndk/27.3.13750724"
           if [ ! -f "$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang" ]; then
@@ -207,6 +252,7 @@ jobs:
           fi
 
       - name: Set up LLVM MinGW toolchain
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           LLVM_DIR="$HOME/toolchains/llvm-mingw-20250920-ucrt-ubuntu-22.04-x86_64"
           if [ ! -f "$LLVM_DIR/bin/llvm-dlltool" ]; then
@@ -220,15 +266,18 @@ jobs:
           fi
 
       - name: Add bylaws llvm-mingw to PATH
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           echo "$HOME/toolchains/llvm-mingw-20250920-ucrt-ubuntu-22.04-x86_64/bin" >> $GITHUB_PATH
 
       - name: Run autogen.sh
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           cd wine-source
           bash autogen.sh
 
       - name: Cache wine-tools
+        if: steps.upstream_check.outputs.skip_build != 'true'
         id: cache-wine-tools
         uses: actions/cache@v4
         with:
@@ -237,8 +286,8 @@ jobs:
           restore-keys: wine-tools-
 
       - name: Build wine-tools
-        if: steps.cache-wine-tools.outputs.cache-hit != 'true'
-        run: |
+        if: steps.upstream_check.outputs.skip_build != 'true'
+        if: steps.upstream_check.outputs.skip_build != 'true' && steps.cache-wine-tools.outputs.cache-hit != 'true'
           cd wine-source
           mkdir -p wine-tools
           cd wine-tools
@@ -246,25 +295,30 @@ jobs:
           make -j$(nproc) __tooldeps__ nls/all
 
       - name: Build sysvshm library
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           cd wine-source
           bash build-scripts/build-step-arm64ec.sh --build-sysvshm
 
       - name: Configure build
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           cd wine-source
           bash build-scripts/build-step-arm64ec.sh --configure
 
       - name: Verify critical patch markers
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           python3 scripts/verify_required_markers.py wine-source
 
       - name: Build Proton
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           cd wine-source
           bash build-scripts/build-step-arm64ec.sh --build
 
       - name: Install Proton
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           # build-step-arm64ec.sh --install runs 'make install' directly into
           # $install_dir = /data/data/com.winlator.cmod/files/imagefs/opt/wine
@@ -284,11 +338,13 @@ jobs:
           file "$OUTPUT_DIR/bin/wineserver" 2>/dev/null || true
 
       - name: Download prefixPack.txz
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           wget https://github.com/GameNative/bionic-prefix-files/raw/main/prefixPack-arm64ec.txz \
             -O $HOME/compiled-files-aarch64/prefixPack.txz
 
       - name: Generate profile.json files and package
+        if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
           OUTPUT_DIR="$HOME/compiled-files-aarch64"
           GIT_HASH=$(git -C wine-source rev-parse --short HEAD)
@@ -338,6 +394,7 @@ jobs:
           ls -lh output/
 
       - name: Detect release-worthy changes
+        if: steps.upstream_check.outputs.skip_build != 'true'
         id: detect_changes
         run: |
           GIT_HASH=$(git -C wine-source rev-parse --short HEAD)
@@ -372,34 +429,33 @@ jobs:
           echo "should_release=$SHOULD_RELEASE"
 
       - name: Upload artifacts
-        if: steps.detect_changes.outputs.should_release == 'true'
-        uses: actions/upload-artifact@v4
+        if: steps.upstream_check.outputs.skip_build != 'true'
+        if: steps.upstream_check.outputs.skip_build != 'true' && steps.detect_changes.outputs.should_release == 'true'
         with:
           name: proton-arm64-nightly
           path: output/
           retention-days: 30
 
       - name: Create GitHub Release
+        if: steps.upstream_check.outputs.skip_build != 'true'
         if: steps.detect_changes.outputs.should_release == 'true'
         run: |
-          GIT_HASH="${{ steps.detect_changes.outputs.git_hash }}"
-          GIT_DATE="${{ steps.detect_changes.outputs.git_date }}"
+        if: steps.upstream_check.outputs.skip_build != 'true' && steps.detect_changes.outputs.should_release == 'true'
           VERSION="${{ steps.detect_changes.outputs.version }}"
           TAG="${{ steps.detect_changes.outputs.release_tag }}"
           gh release create "$TAG" output/* \
             --title "Proton bleeding-edge ARM64 (${GIT_DATE})" \
             --notes "Built from ValveSoftware/wine bleeding-edge @ ${GIT_HASH} with GameNative Android + ARM64EC patches. Automated bleeding-edge build ? use at your own risk." \
             --prerelease \
-            || gh release upload "$TAG" output/* --clobber
-        env:
+        if: steps.upstream_check.outputs.skip_build != 'true' && steps.detect_changes.outputs.should_release == 'true'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update latest.json
+        if: steps.upstream_check.outputs.skip_build != 'true'
         if: steps.detect_changes.outputs.should_release == 'true'
         run: |
           GIT_HASH="${{ steps.detect_changes.outputs.git_hash }}"
-          GIT_DATE="${{ steps.detect_changes.outputs.git_date }}"
-          VERSION="${{ steps.detect_changes.outputs.version }}"
+        if: steps.upstream_check.outputs.skip_build != 'true' && steps.detect_changes.outputs.should_release == 'true'
           WCP_SHA="${{ steps.detect_changes.outputs.wcp_sha }}"
           WCPXZ_SHA="${{ steps.detect_changes.outputs.wcpxz_sha }}"
           python3 scripts/generate_latest.py \
@@ -415,6 +471,7 @@ jobs:
           cat latest.json
 
       - name: Commit latest.json
+        if: steps.upstream_check.outputs.skip_build != 'true'
         if: steps.detect_changes.outputs.should_release == 'true'
         run: |
           git config user.name "github-actions[bot]"
@@ -450,6 +507,8 @@ jobs:
           rm -rf "$RUNNER_TEMP"/* || true
           echo "=== Disk usage after cleanup ==="
           df -h
+
+
 
 
 
