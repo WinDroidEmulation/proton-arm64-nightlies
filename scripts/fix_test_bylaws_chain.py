@@ -174,8 +174,28 @@ def normalize_signal_duplicates(wine_src):
 
 
 def try_apply_patch(wine_src, patch_path):
+    # Check already-applied first (reverse check) to avoid leaving .rej files.
+    rc, out = run(
+        ["git", "-C", wine_src, "apply", "--ignore-whitespace", "-C1", "-R", "--check", patch_path],
+        cwd=None,
+    )
+    if rc == 0:
+        return True, "already applied"
+
+    # Check forward-apply cleanly before actually applying, to avoid .rej files.
+    rc, _ = run(
+        ["git", "-C", wine_src, "apply", "--ignore-whitespace", "-C1", "--check", patch_path],
+        cwd=None,
+    )
+    if rc == 0:
+        rc, out = run(
+            ["git", "-C", wine_src, "apply", "--ignore-whitespace", "-C1", patch_path],
+            cwd=None,
+        )
+        if rc == 0:
+            return True, out
+
     attempts = [
-        ["git", "-C", wine_src, "apply", "--ignore-whitespace", "-C1", patch_path],
         ["git", "-C", wine_src, "apply", "--3way", "--ignore-space-change", patch_path],
         ["patch", "-d", wine_src, "-p1", "--forward", "--batch", "--ignore-whitespace", "-i", patch_path],
     ]
@@ -184,14 +204,6 @@ def try_apply_patch(wine_src, patch_path):
         rc, out = run(cmd, cwd=None)
         if rc == 0:
             return True, out
-
-    # already-applied check
-    rc, out = run(
-        ["git", "-C", wine_src, "apply", "--ignore-whitespace", "-C1", "-R", "--check", patch_path],
-        cwd=None,
-    )
-    if rc == 0:
-        return True, "already applied"
 
     return False, out
 

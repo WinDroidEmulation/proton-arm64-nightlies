@@ -311,9 +311,13 @@ jobs:
 
       - name: Install Proton
         run: |
-          # Use build-step-arm64ec.sh --install exactly as GameNative CI does.
-          # The script runs 'make install' (no DESTDIR) into $install_dir, then
-          # copies bin/lib/share into $OUTPUT_DIR=$HOME/compiled-files-aarch64.
+          # build-step-arm64ec.sh --install runs 'make install' directly into
+          # $install_dir = /data/data/com.winlator.cmod/files/imagefs/opt/wine
+          # which doesn't exist on a hosted runner. Pre-create it with sudo so
+          # make install can write there, then let the script copy to OUTPUT_DIR.
+          sudo mkdir -p /data/data/com.winlator.cmod/files/imagefs/opt/wine
+          sudo chmod -R 777 /data/data
+
           cd wine-source
           bash build-scripts/build-step-arm64ec.sh --install
 

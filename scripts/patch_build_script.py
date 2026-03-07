@@ -20,16 +20,19 @@ with open(path) as f:
 txt = txt.replace(
     'git apply ./android/patches/$patch',
     'if [[ "$patch" == test-bylaws/* ]]; then '
-    'git apply --ignore-whitespace -C1 ./android/patches/$patch'
+    # Already-applied check first — avoids writing .rej files for reversed patches.
+    'git apply --ignore-whitespace -C1 -R --check ./android/patches/$patch 2>/dev/null'
+    ' && echo "ALREADY APPLIED (skipped): $patch"'
+    ' || git apply --ignore-whitespace -C1 --check ./android/patches/$patch 2>/dev/null'
+    ' && git apply --ignore-whitespace -C1 ./android/patches/$patch'
     ' || git apply --3way --ignore-space-change ./android/patches/$patch'
     ' || patch -p1 --forward --batch --ignore-whitespace -i ./android/patches/$patch'
-    ' || git apply --ignore-whitespace -C1 -R --check ./android/patches/$patch 2>/dev/null'
-    ' && echo "ALREADY APPLIED (skipped): $patch"'
     ' || { echo "ERROR: critical patch failed: $patch"; exit 1; }; '
     'else '
-    'git apply --ignore-whitespace -C1 ./android/patches/$patch 2>/dev/null'
-    ' || git apply --ignore-whitespace -C1 -R --check ./android/patches/$patch 2>/dev/null'
+    # Non-critical: check reversed first, then try forward, warn on failure.
+    'git apply --ignore-whitespace -C1 -R --check ./android/patches/$patch 2>/dev/null'
     ' && echo "ALREADY APPLIED (skipped): $patch"'
+    ' || git apply --ignore-whitespace -C1 ./android/patches/$patch 2>/dev/null'
     ' || echo "WARNING: $patch did not apply and is not already present"; '
     'fi'
 )
