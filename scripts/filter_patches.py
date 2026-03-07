@@ -24,7 +24,10 @@ ALREADY_APPLIED = {
     "dlls_wow64_syscall_c.patch":           ("dlls/wow64/syscall.c",         "libwow64fex.dll"),
     "loader_wine_inf_in.patch":             ("loader/wine.inf.in",           "libarm64ecfex.dll"),
     "programs_wineboot_wineboot_c.patch":   ("programs/wineboot/wineboot.c", "initialize_xstate_features"),
-    "dlls_wdscore_wdscore_spec.patch":      ("dlls/wdscore/wdscore.spec",    "WdsGetPointer"),
+    # wdscore patch only removes i386 C++ mangled stubs — no unique marker to detect
+    # post-application. Let patch_build_script.py's forgiving path handle it:
+    # git apply will succeed if not applied, or reverse-check will skip if already applied.
+    # "dlls_wdscore_wdscore_spec.patch": intentionally not filtered here
     "dlls_ntdll_unix_process_c.patch":      ("dlls/ntdll/unix/process.c",    "ProcessFexHardwareTso"),
 
     # test-bylaws patches
