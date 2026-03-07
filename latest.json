@@ -4,11 +4,11 @@
   "gitHash": "61cbb05",
   "wcp": {
     "fileName": "proton-proton-bleeding-edge-20260305-61cbb05-arm64ec.wcp",
-    "sha256": "426a11ca2602ec182f312d68cc41b460ea50f35ee030083b9fa9e1cdb6aae7f6"
+    "sha256": "e29125da8f273f15e0e4a59d4b4f05fb1838b0281208f8fd77c748b02b525750"
   },
   "wcpxz": {
     "fileName": "proton-wine-proton-bleeding-edge-20260305-61cbb05-arm64ec.wcp.xz",
-    "sha256": "dfbe4e3dcabf69d977ee670d0d6220e41192d5326054295072a567317e1a2cee"
+    "sha256": "fcca563a3d3ed819e72360795789729dfce1f47f4b6d4d5e8215767af1bbf713"
   },
   "releaseTag": "bleeding-edge-20260305-61cbb05"
 }
