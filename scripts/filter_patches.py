@@ -2,11 +2,7 @@
 """
 Removes patches from build-step-arm64ec.sh's PATCHES array that are already
 present in the source tree, to avoid double-apply errors when building against
-bleeding-edge.
-
-Only skip patches when we have stable evidence they are already present or are
-intentionally replaced by local fix scripts. Everything else stays in the patch
-list so the build script can attempt real drift-tolerant application.
+bleeding-edge (which has many of GameNative's patches already merged).
 
 Usage: filter_patches.py <build-script-path> <wine-source-path>
 """
@@ -15,45 +11,50 @@ import re
 import sys
 
 
+# Maps patch filename -> (file to check, marker spec added by the patch).
+# Marker specs can be:
+# - a string: skip if the string is present
+# - a list/tuple/set of strings: skip if all markers are present
 # GE-style upfront exclusions: these signal patch pieces are already present in
-# the Valve bleeding-edge base we are building against, and reapplying them can
-# create duplicate definitions before the BYLAWS helper runs.
+# the Valve bleeding-edge base we are building against, and reapplying them creates
+# duplicate definitions before the BYLAWS helper even runs.
 FORCE_SKIP = {
     "test-bylaws/dlls_ntdll_signal_arm64_c.patch",
     "test-bylaws/dlls_ntdll_signal_arm64ec_c.patch",
     "test-bylaws/dlls_ntdll_signal_x86_64_c.patch",
 }
 
-
-# Maps patch filename -> (file to check, marker spec added by the patch).
-# Marker specs can be:
-# - a string: skip if the string is present
-# - a list/tuple/set of strings: skip if all markers are present
 ALREADY_APPLIED = {
-    "dlls_winex11_drv_window_c.patch": ("dlls/winex11.drv/window.c", "steam_proton"),
-    "dlls_ntdll_loader_c.patch": ("dlls/ntdll/loader.c", "libarm64ecfex.dll"),
-    "dlls_ntdll_unix_loader_c.patch": ("dlls/ntdll/unix/loader.c", "__aarch64__"),
-    "dlls_wow64_syscall_c.patch": ("dlls/wow64/syscall.c", "libwow64fex.dll"),
-    "loader_wine_inf_in.patch": ("loader/wine.inf.in", "libarm64ecfex.dll"),
-    "programs_wineboot_wineboot_c.patch": ("programs/wineboot/wineboot.c", "initialize_xstate_features"),
-    "dlls_ntdll_unix_process_c.patch": ("dlls/ntdll/unix/process.c", "ProcessFexHardwareTso"),
+    # Handled by fix_window_c.py - skip this patch so git apply never sees it.
+    # The patch line numbers are too drifted against bleeding-edge to apply cleanly.
+    "dlls_winex11_drv_window_c.patch":      ("dlls/winex11.drv/window.c",    "steam_proton"),
 
-    "test-bylaws/dlls_ntdll_unwind_h.patch": ("dlls/ntdll/unwind.h", ["CONTEXT_ARM64_FEX_YMMSTATE", "CONTEXT_AMD64_XSTATE"]),
-    "test-bylaws/include_winnt_h.patch": ("include/winnt.h", "CONTEXT_ARM64_FEX_YMMSTATE"),
-    "test-bylaws/dlls_ntdll_signal_arm64_c.patch": ("dlls/ntdll/signal_arm64.c", ["RtlWow64SuspendThread", "suspend_remote_breakin"]),
-    "test-bylaws/dlls_ntdll_signal_arm64ec_c.patch": ("dlls/ntdll/signal_arm64ec.c", "RtlWow64SuspendThread"),
-    "test-bylaws/dlls_ntdll_signal_x86_64_c.patch": ("dlls/ntdll/signal_x86_64.c", "RtlWow64SuspendThread"),
-    "test-bylaws/dlls_ntdll_ntdll_spec.patch": ("dlls/ntdll/ntdll.spec", "RtlWow64SuspendThread"),
-    "test-bylaws/dlls_ntdll_ntdll_misc_h.patch": ("dlls/ntdll/ntdll_misc.h", "pWow64SuspendLocalThread"),
-    "test-bylaws/dlls_wow64_wow64_spec.patch": ("dlls/wow64/wow64.spec", "Wow64SuspendLocalThread"),
-    "test-bylaws/dlls_wow64_virtual_c.patch": ("dlls/wow64/virtual.c", "old_prot_ptr"),
-    "test-bylaws/server_process_c.patch": ("server/process.c", "bypass_proc_suspend"),
-    "test-bylaws/dlls_ntdll_unix_process_c.patch": ("dlls/ntdll/unix/process.c", "ProcessFexHardwareTso"),
-    "test-bylaws/dlls_wow64_process_c.patch": ("dlls/wow64/process.c", ["RtlWow64SuspendThread", "wow64_NtSuspendThread"]),
-    "test-bylaws/server_thread_h.patch": ("server/thread.h", "bypass_proc_suspend"),
-    "test-bylaws/server_thread_c.patch": ("server/thread.c", "bypass_proc_suspend"),
-    "test-bylaws/dlls_ntdll_unix_thread_c.patch": ("dlls/ntdll/unix/thread.c", "BYPASS_PROCESS_FREEZE"),
-    "test-bylaws/include_winternl_h.patch": ("include/winternl.h", "ProcessFexHardwareTso"),
+    # These are all merged into ValveSoftware/wine bleeding-edge already.
+    "dlls_ntdll_loader_c.patch":            ("dlls/ntdll/loader.c",          "libarm64ecfex.dll"),
+    "dlls_ntdll_unix_loader_c.patch":       ("dlls/ntdll/unix/loader.c",     "__aarch64__"),
+    "dlls_wow64_syscall_c.patch":           ("dlls/wow64/syscall.c",         "libwow64fex.dll"),
+    "loader_wine_inf_in.patch":             ("loader/wine.inf.in",           "libarm64ecfex.dll"),
+    "programs_wineboot_wineboot_c.patch":   ("programs/wineboot/wineboot.c", "initialize_xstate_features"),
+    "dlls_ntdll_unix_process_c.patch":      ("dlls/ntdll/unix/process.c",    "ProcessFexHardwareTso"),
+
+    # test-bylaws patches
+    "test-bylaws/dlls_ntdll_unwind_h.patch":         ("dlls/ntdll/unwind.h",         ["CONTEXT_ARM64_FEX_YMMSTATE", "CONTEXT_AMD64_XSTATE"]),
+    "test-bylaws/include_winnt_h.patch":             ("include/winnt.h",              "CONTEXT_ARM64_FEX_YMMSTATE"),
+    "test-bylaws/dlls_ntdll_signal_arm64_c.patch":   ("dlls/ntdll/signal_arm64.c",    ["RtlWow64SuspendThread", "suspend_remote_breakin"]),
+    "test-bylaws/dlls_ntdll_signal_arm64ec_c.patch": ("dlls/ntdll/signal_arm64ec.c",  "RtlWow64SuspendThread"),
+    "test-bylaws/dlls_ntdll_signal_x86_64_c.patch":  ("dlls/ntdll/signal_x86_64.c",   "RtlWow64SuspendThread"),
+    "test-bylaws/dlls_ntdll_ntdll_spec.patch":       ("dlls/ntdll/ntdll.spec",        "RtlWow64SuspendThread"),
+    "test-bylaws/dlls_ntdll_ntdll_misc_h.patch":     ("dlls/ntdll/ntdll_misc.h",      "pWow64SuspendLocalThread"),
+    "test-bylaws/dlls_wow64_wow64_spec.patch":       ("dlls/wow64/wow64.spec",        "Wow64SuspendLocalThread"),
+    "test-bylaws/dlls_wow64_virtual_c.patch":        ("dlls/wow64/virtual.c",         "old_prot_ptr"),
+    "test-bylaws/server_process_c.patch":            ("server/process.c",             "bypass_proc_suspend"),
+    "test-bylaws/dlls_ntdll_unix_process_c.patch":   ("dlls/ntdll/unix/process.c",    "ProcessFexHardwareTso"),
+    "test-bylaws/dlls_wow64_process_c.patch":        ("dlls/wow64/process.c",         "wow64_NtSuspendThread"),
+    "test-bylaws/server_thread_h.patch":             ("server/thread.h",              "bypass_proc_suspend"),
+    "test-bylaws/server_thread_c.patch":             ("server/thread.c",              "bypass_proc_suspend"),
+    "test-bylaws/dlls_ntdll_unix_thread_c.patch":    ("dlls/ntdll/unix/thread.c",     "BYPASS_PROCESS_FREEZE"),
+    "test-bylaws/include_winternl_h.patch":          ("include/winternl.h",           "ProcessFexHardwareTso"),
+    "test-bylaws/tools_makedep_c.patch":             ("tools/makedep.c",              ["arch_install_dirs[arch] = \"$(libdir)/wine/aarch64-windows/\";", "output_symlink_rule("]),
 }
 
 
@@ -94,7 +95,6 @@ def main():
             else:
                 print(f"NOT FOUND IN SCRIPT (no change): {patch_name}")
             continue
-
         if is_already_applied(wine_src, rel_file, markers):
             pattern = r'(\s*)"' + re.escape(patch_name) + r'"'
             replacement = r'\1# (already in bleeding-edge) # "' + patch_name + '"'
@@ -116,3 +116,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+

@@ -115,8 +115,13 @@ jobs:
           # fail under git apply as "corrupt patch" despite valid content).
           find wine-source/android/patches -type f -name "*.patch" -exec sed -i 's/\r$//' {} +
 
+          # Fix a GameNative OpenGL patch bug before application. The upstream
+          # patch parses the literal string "WINE_X11FORCEGLX" instead of the
+          # env var value, which breaks the Android GLX force path.
+          sed -i 's/atoi("WINE_X11FORCEGLX")/atoi(getenv("WINE_X11FORCEGLX"))/g' \
+            wine-source/android/patches/dlls_winex11_drv_opengl_c.patch
 
-          # Comment out patches already merged into bleeding-edge (or handled by
+
           # fix_*.py scripts) so they don't get double-applied or fail the build.
           python3 scripts/filter_patches.py \
             wine-source/build-scripts/build-step-arm64ec.sh \
@@ -445,6 +450,7 @@ jobs:
           rm -rf "$RUNNER_TEMP"/* || true
           echo "=== Disk usage after cleanup ==="
           df -h
+
 
 
 
