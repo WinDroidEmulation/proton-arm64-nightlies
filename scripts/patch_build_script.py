@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
-Patches build-step-arm64ec.sh to use forgiving patch application for most
-patches, but fail hard for critical test-bylaws patches required for runtime.
+Patch build-step-arm64ec.sh so required Android/GameNative patches either apply,
+are already present, or fail the build.
 
-For test-bylaws patches we try, in order:
-1) git apply with loose whitespace/context
-2) git apply 3-way
-3) GNU patch (fuzzy line-offset application)
-4) reverse-check for already-applied
+For drift-prone patches we try, in order:
+1) reverse-check for already-applied
+2) git apply with loose whitespace/context
+3) git apply 3-way
+4) GNU patch (fuzzy line-offset application)
 Then fail if none work.
+
+test-bylaws patches keep a marker-based already-applied fast path because
+reverse-checks can fail under heavy drift even when the content is present.
 """
 import sys
 
@@ -52,10 +55,18 @@ txt = txt.replace(
     '  echo "ERROR: critical patch failed: $patch"; exit 1; '
     'fi; '
     'else '
-    'git apply --ignore-whitespace -C1 -R --check ./android/patches/$patch 2>/dev/null'
-    ' && echo "ALREADY APPLIED (skipped): $patch"'
-    ' || git apply --ignore-whitespace -C1 ./android/patches/$patch 2>/dev/null'
-    ' || echo "WARNING: $patch did not apply and is not already present"; '
+    'if git apply --ignore-whitespace -C1 -R --check ./android/patches/$patch 2>/dev/null; then '
+    '  echo "ALREADY APPLIED (skipped): $patch"; '
+    'elif git apply --ignore-whitespace -C1 --check ./android/patches/$patch 2>/dev/null'
+    ' && git apply --ignore-whitespace -C1 ./android/patches/$patch; then '
+    '  echo "Applied: $patch"; '
+    'elif git apply --3way --ignore-space-change ./android/patches/$patch 2>/dev/null; then '
+    '  echo "Applied (3way): $patch"; '
+    'elif patch -p1 --forward --batch --ignore-whitespace -i ./android/patches/$patch 2>/dev/null; then '
+    '  echo "Applied (patch): $patch"; '
+    'else '
+    '  echo "ERROR: required patch failed: $patch"; exit 1; '
+    'fi; '
     'fi'
 )
 
