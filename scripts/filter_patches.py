@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Comment out only patches that are either:
-- intentionally handled by local fix scripts, or
-- already merged into Valve bleeding-edge with stable identifying markers.
+Removes patches from build-step-arm64ec.sh's PATCHES array that are already
+present in the source tree, to avoid double-apply errors when building against
+bleeding-edge.
 
-Everything else stays in build-step-arm64ec.sh so patch_build_script.py can
-attempt a real apply/reverse-check/3way merge instead of being skipped on weak
-heuristics.
+Only skip patches when we have stable evidence they are already present or are
+intentionally replaced by local fix scripts. Everything else stays in the patch
+list so the build script can attempt real drift-tolerant application.
 
 Usage: filter_patches.py <build-script-path> <wine-source-path>
 """
@@ -15,27 +15,59 @@ import re
 import sys
 
 
-# Only use this list for patches we are confident are already present upstream
-# or replaced locally. Anything drift-prone but still required should not be
-# filtered here.
-FILTERED_PATCHES = {
-    "dlls_winex11_drv_window_c.patch": ("dlls/winex11.drv/window.c", ["steam_proton"], "handled by fix_window_c.py"),
-    "dlls_ntdll_loader_c.patch": ("dlls/ntdll/loader.c", ["libarm64ecfex.dll"], "already in bleeding-edge"),
-    "dlls_ntdll_unix_loader_c.patch": ("dlls/ntdll/unix/loader.c", ["__aarch64__"], "already in bleeding-edge"),
-    "dlls_wow64_syscall_c.patch": ("dlls/wow64/syscall.c", ["libwow64fex.dll"], "already in bleeding-edge"),
-    "loader_wine_inf_in.patch": ("loader/wine.inf.in", ["libarm64ecfex.dll"], "already in bleeding-edge"),
-    "programs_wineboot_wineboot_c.patch": ("programs/wineboot/wineboot.c", ["initialize_xstate_features"], "handled by fix_wineboot_c.py / already in bleeding-edge"),
-    "dlls_ntdll_unix_process_c.patch": ("dlls/ntdll/unix/process.c", ["ProcessFexHardwareTso"], "already in bleeding-edge"),
+# GE-style upfront exclusions: these signal patch pieces are already present in
+# the Valve bleeding-edge base we are building against, and reapplying them can
+# create duplicate definitions before the BYLAWS helper runs.
+FORCE_SKIP = {
+    "test-bylaws/dlls_ntdll_signal_arm64_c.patch",
+    "test-bylaws/dlls_ntdll_signal_arm64ec_c.patch",
+    "test-bylaws/dlls_ntdll_signal_x86_64_c.patch",
 }
 
 
-def has_any_marker(wine_src, rel_path, markers):
-    full = os.path.join(wine_src, rel_path)
-    if not os.path.exists(full):
+# Maps patch filename -> (file to check, marker spec added by the patch).
+# Marker specs can be:
+# - a string: skip if the string is present
+# - a list/tuple/set of strings: skip if all markers are present
+ALREADY_APPLIED = {
+    "dlls_winex11_drv_window_c.patch": ("dlls/winex11.drv/window.c", "steam_proton"),
+    "dlls_ntdll_loader_c.patch": ("dlls/ntdll/loader.c", "libarm64ecfex.dll"),
+    "dlls_ntdll_unix_loader_c.patch": ("dlls/ntdll/unix/loader.c", "__aarch64__"),
+    "dlls_wow64_syscall_c.patch": ("dlls/wow64/syscall.c", "libwow64fex.dll"),
+    "loader_wine_inf_in.patch": ("loader/wine.inf.in", "libarm64ecfex.dll"),
+    "programs_wineboot_wineboot_c.patch": ("programs/wineboot/wineboot.c", "initialize_xstate_features"),
+    "dlls_ntdll_unix_process_c.patch": ("dlls/ntdll/unix/process.c", "ProcessFexHardwareTso"),
+
+    "test-bylaws/dlls_ntdll_unwind_h.patch": ("dlls/ntdll/unwind.h", ["CONTEXT_ARM64_FEX_YMMSTATE", "CONTEXT_AMD64_XSTATE"]),
+    "test-bylaws/include_winnt_h.patch": ("include/winnt.h", "CONTEXT_ARM64_FEX_YMMSTATE"),
+    "test-bylaws/dlls_ntdll_signal_arm64_c.patch": ("dlls/ntdll/signal_arm64.c", ["RtlWow64SuspendThread", "suspend_remote_breakin"]),
+    "test-bylaws/dlls_ntdll_signal_arm64ec_c.patch": ("dlls/ntdll/signal_arm64ec.c", "RtlWow64SuspendThread"),
+    "test-bylaws/dlls_ntdll_signal_x86_64_c.patch": ("dlls/ntdll/signal_x86_64.c", "RtlWow64SuspendThread"),
+    "test-bylaws/dlls_ntdll_ntdll_spec.patch": ("dlls/ntdll/ntdll.spec", "RtlWow64SuspendThread"),
+    "test-bylaws/dlls_ntdll_ntdll_misc_h.patch": ("dlls/ntdll/ntdll_misc.h", "pWow64SuspendLocalThread"),
+    "test-bylaws/dlls_wow64_wow64_spec.patch": ("dlls/wow64/wow64.spec", "Wow64SuspendLocalThread"),
+    "test-bylaws/dlls_wow64_virtual_c.patch": ("dlls/wow64/virtual.c", "old_prot_ptr"),
+    "test-bylaws/server_process_c.patch": ("server/process.c", "bypass_proc_suspend"),
+    "test-bylaws/dlls_ntdll_unix_process_c.patch": ("dlls/ntdll/unix/process.c", "ProcessFexHardwareTso"),
+    "test-bylaws/dlls_wow64_process_c.patch": ("dlls/wow64/process.c", ["RtlWow64SuspendThread", "wow64_NtSuspendThread"]),
+    "test-bylaws/server_thread_h.patch": ("server/thread.h", "bypass_proc_suspend"),
+    "test-bylaws/server_thread_c.patch": ("server/thread.c", "bypass_proc_suspend"),
+    "test-bylaws/dlls_ntdll_unix_thread_c.patch": ("dlls/ntdll/unix/thread.c", "BYPASS_PROCESS_FREEZE"),
+    "test-bylaws/include_winternl_h.patch": ("include/winternl.h", "ProcessFexHardwareTso"),
+}
+
+
+def is_already_applied(wine_src, rel_file, markers):
+    path = os.path.join(wine_src, rel_file)
+    if not os.path.exists(path):
         return False
-    with open(full, errors="replace") as f:
+
+    with open(path, errors='replace') as f:
         text = f.read()
-    return any(marker in text for marker in markers)
+
+    if isinstance(markers, (list, tuple, set)):
+        return all(marker in text for marker in markers)
+    return markers in text
 
 
 def main():
@@ -50,24 +82,36 @@ def main():
         content = f.read()
 
     skipped = []
-    for patch_name, (rel_path, markers, reason) in FILTERED_PATCHES.items():
-        if not has_any_marker(wine_src, rel_path, markers):
-            print(f"APPLY: {patch_name}")
+    for patch_name, (rel_file, markers) in ALREADY_APPLIED.items():
+        if patch_name in FORCE_SKIP:
+            pattern = r'(\s*)"' + re.escape(patch_name) + r'"'
+            replacement = r'\1# (GE-style pre-exclude) # "' + patch_name + '"'
+            new_content = re.sub(pattern, replacement, content)
+            if new_content != content:
+                content = new_content
+                skipped.append(patch_name)
+                print(f"SKIP (GE-style pre-exclude): {patch_name}")
+            else:
+                print(f"NOT FOUND IN SCRIPT (no change): {patch_name}")
             continue
-        pattern = r'(\s*)"' + re.escape(patch_name) + r'"'
-        replacement = r'\1# (' + reason + r') # "' + patch_name + '"'
-        new_content = re.sub(pattern, replacement, content)
-        if new_content != content:
-            content = new_content
-            skipped.append(patch_name)
-            print(f"SKIP ({reason}): {patch_name}")
+
+        if is_already_applied(wine_src, rel_file, markers):
+            pattern = r'(\s*)"' + re.escape(patch_name) + r'"'
+            replacement = r'\1# (already in bleeding-edge) # "' + patch_name + '"'
+            new_content = re.sub(pattern, replacement, content)
+            if new_content != content:
+                content = new_content
+                skipped.append(patch_name)
+                print(f"SKIP (already applied): {patch_name}")
+            else:
+                print(f"NOT FOUND IN SCRIPT (no change): {patch_name}")
         else:
-            print(f"NOT FOUND IN SCRIPT (no change): {patch_name}")
+            print(f"APPLY: {patch_name}")
 
     with open(script_path, 'w') as f:
         f.write(content)
 
-    print(f"\nDone. Skipped {len(skipped)} upstream/local-handled patch(es).")
+    print(f"\nDone. Skipped {len(skipped)} already-applied patches.")
 
 
 if __name__ == "__main__":
