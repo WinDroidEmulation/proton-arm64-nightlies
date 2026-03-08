@@ -172,8 +172,6 @@ jobs:
           sed -i 's/atoi("WINE_X11FORCEGLX")/atoi(getenv("WINE_X11FORCEGLX"))/g' \
             wine-source/android/patches/dlls_winex11_drv_opengl_c.patch
 
-
-
           # Optionally fetch GE winebus controller patches directly from source.
           if [ "${{ github.event.inputs.extra_winebus_patches || 'false' }}" = "true" ]; then
             OPTIONAL_WINEBUS_BASE="https://raw.githubusercontent.com/GloriousEggroll/proton-ge-custom/master/patches/wine-hotfixes/wine-wayland"
@@ -184,7 +182,7 @@ jobs:
               0083-fixup-winebus-Allow-disabling-steam-input-seperately.patch \
               0106-winebus-remove-duplicate-code.patch; do
               wget -q "$OPTIONAL_WINEBUS_BASE/$patch" -O "$OPTIONAL_WINEBUS_DIR/$patch"
-              sed -i 's/$//' "$OPTIONAL_WINEBUS_DIR/$patch"
+              sed -i 's/\r$//' "$OPTIONAL_WINEBUS_DIR/$patch"
             done
             cp "$OPTIONAL_WINEBUS_DIR"/*.patch wine-source/android/patches/
             python3 scripts/inject_optional_patches.py \
@@ -475,7 +473,7 @@ jobs:
           TAG="${{ steps.detect_changes.outputs.release_tag }}"
           gh release create "$TAG" output/* \
             --title "Proton bleeding-edge ARM64 (${GIT_DATE})" \
-            --notes "Built from ValveSoftware/wine bleeding-edge @ ${GIT_HASH} with GameNative Android + ARM64EC patches. Automated bleeding-edge build ? use at your own risk." \
+            --notes "Built from ValveSoftware/wine bleeding-edge @ ${GIT_HASH} with GameNative Android + ARM64EC patches. Automated bleeding-edge build; use at your own risk." \
             --prerelease \
             || gh release upload "$TAG" output/* --clobber
         env:
@@ -512,19 +510,6 @@ jobs:
           git pull --rebase origin HEAD
           git push
 
-
-
-
-
-
-
-
-
-
-
-
-
-
       - name: Cleanup runner workspace
         if: ${{ always() && contains(runner.labels, 'self-hosted') }}
         run: |
@@ -536,14 +521,3 @@ jobs:
           rm -rf "$RUNNER_TEMP"/* || true
           echo "=== Disk usage after cleanup ==="
           df -h
-
-
-
-
-
-
-
-
-
-
-
