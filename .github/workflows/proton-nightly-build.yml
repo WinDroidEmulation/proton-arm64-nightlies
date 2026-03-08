@@ -36,11 +36,7 @@ on:
         required: false
         default: false
         type: boolean
-      wayland_enabled:
-        description: 'Enable Wayland support during wine-tools configure'
-        required: false
-        default: false
-        type: boolean
+
       xinput2_enabled:
         description: 'Enable XInput2 support for raw mouse input'
         required: false
@@ -68,7 +64,6 @@ jobs:
         run: |
           WINE_REF="${{ github.event.inputs.wine_ref || 'bleeding-edge' }}"
           FORCE_BUILD="${{ github.event.inputs.force_build || 'false' }}"
-          WAYLAND_ENABLED="${{ github.event.inputs.wayland_enabled || 'false' }}"
           XINPUT2_ENABLED="${{ github.event.inputs.xinput2_enabled || 'false' }}"
           PREV_GIT_HASH="$(python3 -c 'import json; d=json.load(open("latest.json")); print(d.get("gitHash",""))')"
 
@@ -85,7 +80,7 @@ jobs:
 
           REMOTE_SHORT_HASH="$(printf '%s' "$REMOTE_FULL_HASH" | cut -c1-7)"
           SKIP_BUILD=false
-          if [ "$WAYLAND_ENABLED" != 'true' ] && [ "$XINPUT2_ENABLED" != 'true' ] && [ "$FORCE_BUILD" != 'true' ] && [ "$REMOTE_SHORT_HASH" = "$PREV_GIT_HASH" ]; then
+          if [ "$XINPUT2_ENABLED" != 'true' ] && [ "$FORCE_BUILD" != 'true' ] && [ "$REMOTE_SHORT_HASH" = "$PREV_GIT_HASH" ]; then
             SKIP_BUILD=true
           fi
 
@@ -114,7 +109,6 @@ jobs:
       - name: Set up build environment
         if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
-          WAYLAND_ENABLED="${{ github.event.inputs.wayland_enabled || 'false' }}"
           XINPUT2_ENABLED="${{ github.event.inputs.xinput2_enabled || 'false' }}"
           sudo dpkg --add-architecture i386
           sudo apt-get update
@@ -144,19 +138,6 @@ jobs:
             xz-utils \
             python3-zstandard \
             patch
-          if [ "$WAYLAND_ENABLED" = "true" ]; then
-            sudo apt-get install -y \
-              libwayland-dev \
-              libwayland-dev:i386 \
-              libwayland-bin \
-              libegl1-mesa-dev \
-              libegl1-mesa-dev:i386 \
-              libxkbcommon-dev \
-              libxkbcommon-dev:i386 \
-              libxkbregistry-dev \
-              libxkbregistry-dev:i386 \
-              wayland-protocols
-          fi
           if [ "$XINPUT2_ENABLED" = "true" ]; then
             sudo apt-get install -y \
               libxi-dev
@@ -260,7 +241,6 @@ jobs:
           if ! grep -q 'Script rev: 2026-03-07-driftproof-v2' scripts/fix_test_bylaws_chain.py; then echo 'ERROR: stale fix_test_bylaws_chain.py in runner'; exit 97; fi
           python3 scripts/fix_test_bylaws_chain.py wine-source
 
-
           # Rewrite the baked-in install prefix from the Termux CI path to the
           # actual custom Proton install directory used by GameNative imports.
           # This workflow packages type=Proton with a parser-compatible numeric
@@ -270,12 +250,9 @@ jobs:
           # If Wine is built against /opt/wine instead, builtin DLL resolution points at
           # the wrong tree after import and startup dies during kernel32 initialization.
           # libredirect still rewrites com.winlator.cmod -> app.gamenative at runtime.
-          WAYLAND_ENABLED="${{ github.event.inputs.wayland_enabled || 'false' }}"
           XINPUT2_ENABLED="${{ github.event.inputs.xinput2_enabled || 'false' }}"
           PROFILE_VERSION="10.0.99-arm64ec"
-          if [ "$WAYLAND_ENABLED" = "true" ]; then
-            PROFILE_VERSION="10.0.99.1-arm64ec"
-          elif [ "$XINPUT2_ENABLED" = "true" ]; then
+          if [ "$XINPUT2_ENABLED" = "true" ]; then
             PROFILE_VERSION="10.0.99.2-arm64ec"
           fi
           INSTALL_DIR="/data/data/com.winlator.cmod/files/imagefs/opt/proton-${PROFILE_VERSION}"
@@ -288,9 +265,6 @@ jobs:
           echo "Using RUNTIME_PATH=$RUNTIME_PATH"
           sed -i "s|export install_dir=.*|export install_dir=${INSTALL_DIR}|" wine-source/build-scripts/build-step-arm64ec.sh
           sed -i "s|export RUNTIME_PATH=.*|export RUNTIME_PATH=\"${RUNTIME_PATH}\"|" wine-source/build-scripts/build-step-arm64ec.sh
-          if [ "$WAYLAND_ENABLED" = "true" ]; then
-            sed -i 's/--without-wayland/--with-wayland/g' wine-source/build-scripts/build-step-arm64ec.sh
-          fi
           if [ "$XINPUT2_ENABLED" = "true" ]; then
             sed -i 's/--without-xinput2/--with-xinput2/g' wine-source/build-scripts/build-step-arm64ec.sh
           fi
@@ -356,18 +330,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: wine-source/wine-tools
-          key: wine-tools-${{ github.event.inputs.wayland_enabled || 'false' }}-${{ github.event.inputs.xinput2_enabled || 'false' }}-${{ hashFiles('wine-source/configure.ac', 'wine-source/configure') }}
+          key: wine-tools-${{ github.event.inputs.xinput2_enabled || 'false' }}-${{ hashFiles('wine-source/configure.ac', 'wine-source/configure') }}
           restore-keys: wine-tools-
 
       - name: Build wine-tools
         if: steps.upstream_check.outputs.skip_build != 'true' && steps.cache-wine-tools.outputs.cache-hit != 'true'
         run: |
-          WAYLAND_ENABLED="${{ github.event.inputs.wayland_enabled || 'false' }}"
           XINPUT2_ENABLED="${{ github.event.inputs.xinput2_enabled || 'false' }}"
-          WAYLAND_FLAG="--without-wayland"
-          if [ "$WAYLAND_ENABLED" = "true" ]; then
-            WAYLAND_FLAG="--with-wayland"
-          fi
           cd wine-source
           mkdir -p wine-tools
           cd wine-tools
@@ -375,7 +344,7 @@ jobs:
           if [ "$XINPUT2_ENABLED" = "true" ]; then
             XINPUT2_FLAG="--with-xinput2"
           fi
-          ../configure --without-x --without-gstreamer --without-vulkan "$WAYLAND_FLAG" "$XINPUT2_FLAG"
+          ../configure --without-x --without-gstreamer --without-vulkan --without-wayland "$XINPUT2_FLAG"
           make -j$(nproc) __tooldeps__ nls/all
 
       - name: Build sysvshm library
@@ -423,12 +392,9 @@ jobs:
       - name: Install Proton
         if: steps.upstream_check.outputs.skip_build != 'true'
         run: |
-          WAYLAND_ENABLED="${{ github.event.inputs.wayland_enabled || 'false' }}"
           XINPUT2_ENABLED="${{ github.event.inputs.xinput2_enabled || 'false' }}"
           PROFILE_VERSION="10.0.99-arm64ec"
-          if [ "$WAYLAND_ENABLED" = "true" ]; then
-            PROFILE_VERSION="10.0.99.1-arm64ec"
-          elif [ "$XINPUT2_ENABLED" = "true" ]; then
+          if [ "$XINPUT2_ENABLED" = "true" ]; then
             PROFILE_VERSION="10.0.99.2-arm64ec"
           fi
           # build-step-arm64ec.sh --install runs 'make install' directly into
@@ -459,17 +425,12 @@ jobs:
           OUTPUT_DIR="$HOME/compiled-files-aarch64"
           GIT_HASH=$(git -C wine-source rev-parse --short HEAD)
           GIT_DATE=$(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')
-          WAYLAND_ENABLED="${{ github.event.inputs.wayland_enabled || 'false' }}"
           XINPUT2_ENABLED="${{ github.event.inputs.xinput2_enabled || 'false' }}"
           VERSION_BASE="proton-bleeding-edge-${GIT_DATE}-${GIT_HASH}-arm64ec"
           VERSION="$VERSION_BASE"
           PROFILE_VERSION="10.0.99-arm64ec"
           DISPLAY_NAME="Proton bleeding-edge ARM64 ${GIT_DATE} (${GIT_HASH})"
-          if [ "$WAYLAND_ENABLED" = "true" ]; then
-            VERSION="proton-bleeding-edge-wayland-${GIT_DATE}-${GIT_HASH}-arm64ec"
-            PROFILE_VERSION="10.0.99.1-arm64ec"
-            DISPLAY_NAME="Proton bleeding-edge Wayland ARM64 ${GIT_DATE} (${GIT_HASH})"
-          elif [ "$XINPUT2_ENABLED" = "true" ]; then
+          if [ "$XINPUT2_ENABLED" = "true" ]; then
             VERSION="proton-bleeding-edge-xinput2-${GIT_DATE}-${GIT_HASH}-arm64ec"
             PROFILE_VERSION="10.0.99.2-arm64ec"
             DISPLAY_NAME="Proton bleeding-edge XInput2 ARM64 ${GIT_DATE} (${GIT_HASH})"
@@ -520,14 +481,10 @@ jobs:
         run: |
           GIT_HASH=$(git -C wine-source rev-parse --short HEAD)
           GIT_DATE=$(git -C wine-source log -1 --format='%cd' --date=format:'%Y%m%d')
-          WAYLAND_ENABLED="${{ github.event.inputs.wayland_enabled || 'false' }}"
           XINPUT2_ENABLED="${{ github.event.inputs.xinput2_enabled || 'false' }}"
           VERSION="proton-bleeding-edge-${GIT_DATE}-${GIT_HASH}-arm64ec"
           RELEASE_TAG="bleeding-edge-${GIT_DATE}-${GIT_HASH}"
-          if [ "$WAYLAND_ENABLED" = "true" ]; then
-            VERSION="proton-bleeding-edge-wayland-${GIT_DATE}-${GIT_HASH}-arm64ec"
-            RELEASE_TAG="bleeding-edge-wayland-${GIT_DATE}-${GIT_HASH}"
-          elif [ "$XINPUT2_ENABLED" = "true" ]; then
+          if [ "$XINPUT2_ENABLED" = "true" ]; then
             VERSION="proton-bleeding-edge-xinput2-${GIT_DATE}-${GIT_HASH}-arm64ec"
             RELEASE_TAG="bleeding-edge-xinput2-${GIT_DATE}-${GIT_HASH}"
           fi
@@ -538,7 +495,7 @@ jobs:
           PREV_WCPXZ_SHA="$(python3 -c 'import json; d=json.load(open("latest.json")); print(d.get("wcpxz",{}).get("sha256",""))')"
 
           SHOULD_RELEASE=false
-          if [ "$WAYLAND_ENABLED" = "true" ] || [ "$XINPUT2_ENABLED" = "true" ]; then
+          if [ "$XINPUT2_ENABLED" = "true" ]; then
             SHOULD_RELEASE=true
           elif [ "$GIT_HASH" != "$PREV_GIT_HASH" ] || [ "$WCP_SHA" != "$PREV_WCP_SHA" ] || [ "$WCPXZ_SHA" != "$PREV_WCPXZ_SHA" ]; then
             SHOULD_RELEASE=true
@@ -577,10 +534,7 @@ jobs:
           TAG="${{ steps.detect_changes.outputs.release_tag }}"
           TITLE="Proton bleeding-edge ARM64 (${GIT_DATE})"
           NOTES="Built from ValveSoftware/wine bleeding-edge @ ${GIT_HASH} with GameNative Android + ARM64EC patches. Automated bleeding-edge build; use at your own risk."
-          if [ "${{ github.event.inputs.wayland_enabled || 'false' }}" = "true" ]; then
-            TITLE="Proton bleeding-edge Wayland ARM64 (${GIT_DATE})"
-            NOTES="Built from ValveSoftware/wine bleeding-edge @ ${GIT_HASH} with GameNative Android + ARM64EC patches and Wayland enabled. Automated bleeding-edge build; use at your own risk."
-          elif [ "${{ github.event.inputs.xinput2_enabled || 'false' }}" = "true" ]; then
+          if [ "${{ github.event.inputs.xinput2_enabled || 'false' }}" = "true" ]; then
             TITLE="Proton bleeding-edge XInput2 ARM64 (${GIT_DATE})"
             NOTES="Built from ValveSoftware/wine bleeding-edge @ ${GIT_HASH} with GameNative Android + ARM64EC patches and XInput2 enabled. Automated bleeding-edge build; use at your own risk."
           fi
@@ -593,7 +547,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update latest.json
-        if: steps.upstream_check.outputs.skip_build != 'true' && steps.detect_changes.outputs.should_release == 'true' && (github.event.inputs.wayland_enabled || 'false') != 'true' && (github.event.inputs.xinput2_enabled || 'false') != 'true'
+        if: steps.upstream_check.outputs.skip_build != 'true' && steps.detect_changes.outputs.should_release == 'true' && (github.event.inputs.xinput2_enabled || 'false') != 'true'
         run: |
           GIT_HASH="${{ steps.detect_changes.outputs.git_hash }}"
           GIT_DATE="${{ steps.detect_changes.outputs.git_date }}"
@@ -613,7 +567,7 @@ jobs:
           cat latest.json
 
       - name: Commit latest.json
-        if: steps.upstream_check.outputs.skip_build != 'true' && steps.detect_changes.outputs.should_release == 'true' && (github.event.inputs.wayland_enabled || 'false') != 'true' && (github.event.inputs.xinput2_enabled || 'false') != 'true'
+        if: steps.upstream_check.outputs.skip_build != 'true' && steps.detect_changes.outputs.should_release == 'true' && (github.event.inputs.xinput2_enabled || 'false') != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
