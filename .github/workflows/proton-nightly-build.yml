@@ -235,13 +235,18 @@ jobs:
           python3 scripts/fix_test_bylaws_chain.py wine-source
 
           PROFILE_VERSION="${{ matrix.profile_version }}"
-          INSTALL_DIR="/data/data/com.winlator.cmod/files/imagefs/opt/proton-${PROFILE_VERSION}"
-          RUNTIME_PATH="/data/data/com.winlator.cmod/files/imagefs/usr"
-          echo "Using profile_version=$PROFILE_VERSION"
-          echo "Using install_dir=$INSTALL_DIR"
-          echo "Using RUNTIME_PATH=$RUNTIME_PATH"
-          sed -i "s|export install_dir=.*|export install_dir=${INSTALL_DIR}|" "wine-source/build-scripts/${{ matrix.build_script }}"
-          sed -i "s|export RUNTIME_PATH=.*|export RUNTIME_PATH=\"${RUNTIME_PATH}\"|" "wine-source/build-scripts/${{ matrix.build_script }}"
+          if [ "${{ matrix.arch_id }}" = "arm64ec" ]; then
+            INSTALL_DIR="/data/data/com.winlator.cmod/files/imagefs/opt/proton-${PROFILE_VERSION}"
+            RUNTIME_PATH="/data/data/com.winlator.cmod/files/imagefs/usr"
+            echo "Using profile_version=$PROFILE_VERSION"
+            echo "Using install_dir=$INSTALL_DIR"
+            echo "Using RUNTIME_PATH=$RUNTIME_PATH"
+            sed -i "s|export install_dir=.*|export install_dir=${INSTALL_DIR}|" "wine-source/build-scripts/${{ matrix.build_script }}"
+            sed -i "s|export RUNTIME_PATH=.*|export RUNTIME_PATH=\"${RUNTIME_PATH}\"|" "wine-source/build-scripts/${{ matrix.build_script }}"
+          else
+            echo "Using profile_version=$PROFILE_VERSION"
+            echo "Keeping GameNative default install_dir/RUNTIME_PATH for ${{ matrix.arch_id }}"
+          fi
 
       - name: Download and extract termuxfs for ${{ matrix.termux_arch }}
         run: |
@@ -352,8 +357,10 @@ jobs:
       - name: Install Proton
         run: |
           PROFILE_VERSION="${{ matrix.profile_version }}"
-          sudo mkdir -p "/data/data/com.winlator.cmod/files/imagefs/opt/proton-${PROFILE_VERSION}"
-          sudo chmod -R 777 /data/data
+          if [ "${{ matrix.arch_id }}" = "arm64ec" ]; then
+            sudo mkdir -p "/data/data/com.winlator.cmod/files/imagefs/opt/proton-${PROFILE_VERSION}"
+            sudo chmod -R 777 /data/data
+          fi
 
           cd wine-source
           bash "build-scripts/${{ matrix.build_script }}" --install
