@@ -465,32 +465,24 @@ jobs:
               data = json.loads(Path(path).read_text())
               metas[data["arch"]] = data
 
-          required = {"arm64ec", "x86_64"}
-          missing = required.difference(metas)
-          if missing:
-              raise SystemExit(f"missing metadata files for: {sorted(missing)}")
+          if "arm64ec" not in metas:
+              raise SystemExit("missing metadata file for: arm64ec")
 
           arm = metas["arm64ec"]
-          x86 = metas["x86_64"]
           latest = json.loads(Path("latest.json").read_text())
           run_suffix = os.environ['GITHUB_RUN_NUMBER']
           release_tag = f"bleeding-edge-{arm['gitDate']}-{arm['gitHash']}-run{run_suffix}"
 
           artifacts = latest.get("artifacts", {})
           prev_arm = artifacts.get("arm64ec", {})
-          prev_x86 = artifacts.get("x86_64", {})
 
           prev_arm_wcp = prev_arm.get("wcp", {}).get("sha256") or latest.get("wcp", {}).get("sha256", "")
           prev_arm_wcpxz = prev_arm.get("wcpxz", {}).get("sha256") or latest.get("wcpxz", {}).get("sha256", "")
-          prev_x86_wcp = prev_x86.get("wcp", {}).get("sha256", "")
-          prev_x86_wcpxz = prev_x86.get("wcpxz", {}).get("sha256", "")
 
           should_release = (
               arm["gitHash"] != latest.get("gitHash", "")
               or arm["wcpSha"] != prev_arm_wcp
               or arm["wcpxzSha"] != prev_arm_wcpxz
-              or x86["wcpSha"] != prev_x86_wcp
-              or x86["wcpxzSha"] != prev_x86_wcpxz
           )
 
           outputs = {
@@ -511,10 +503,6 @@ jobs:
               "currentArmWcpSha": arm["wcpSha"],
               "previousArmWcpxzSha": prev_arm_wcpxz,
               "currentArmWcpxzSha": arm["wcpxzSha"],
-              "previousX86WcpSha": prev_x86_wcp,
-              "currentX86WcpSha": x86["wcpSha"],
-              "previousX86WcpxzSha": prev_x86_wcpxz,
-              "currentX86WcpxzSha": x86["wcpxzSha"],
               "shouldRelease": should_release,
           }, indent=2))
           PY
@@ -533,8 +521,8 @@ jobs:
           GIT_HASH="${{ steps.detect_changes.outputs.git_hash }}"
           GIT_DATE="${{ steps.detect_changes.outputs.git_date }}"
           TAG="${{ steps.detect_changes.outputs.release_tag }}"
-          TITLE="Proton bleeding-edge x86_64 + ARM64EC (${GIT_DATE})"
-          NOTES="Built from ValveSoftware/wine bleeding-edge @ ${GIT_HASH} with GameNative Android build scripts. Includes x86_64 and ARM64EC packages in the same release. Automated bleeding-edge build; use at your own risk."
+          TITLE="Proton bleeding-edge ARM64EC (${GIT_DATE})"
+          NOTES="Built from ValveSoftware/wine bleeding-edge @ ${GIT_HASH} with GameNative Android build scripts. Includes ARM64EC packages in the same release. Automated bleeding-edge build; use at your own risk."
           gh release create "$TAG" release/* \
             --title "$TITLE" \
             --notes "$NOTES" \
@@ -557,7 +545,6 @@ jobs:
               metas[data["arch"]] = data
 
           arm = metas["arm64ec"]
-          x86 = metas["x86_64"]
           data = {
               "versionName": arm["version"],
               "date": arm["gitDate"],
@@ -581,18 +568,6 @@ jobs:
                       "wcpxz": {
                           "fileName": arm["wcpxzFile"],
                           "sha256": arm["wcpxzSha"],
-                      },
-                  },
-                  "x86_64": {
-                      "versionName": x86["version"],
-                      "profileVersion": x86["profileVersion"],
-                      "wcp": {
-                          "fileName": x86["wcpFile"],
-                          "sha256": x86["wcpSha"],
-                      },
-                      "wcpxz": {
-                          "fileName": x86["wcpxzFile"],
-                          "sha256": x86["wcpxzSha"],
                       },
                   },
               },
