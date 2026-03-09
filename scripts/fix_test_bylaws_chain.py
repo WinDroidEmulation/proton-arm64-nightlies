@@ -179,6 +179,22 @@ def normalize_signal_duplicates(wine_src):
 
 
 def try_apply_patch(wine_src, patch_path):
+    # For heavily drifted BYLAWS signal patches, use marker-based already-applied
+    # detection first. Reverse-check can fail even when bleeding-edge already
+    # contains the required code, which leads to unnecessary .rej files.
+    patch_name = os.path.basename(patch_path)
+    marker_map = {
+        "dlls_ntdll_signal_arm64ec_c.patch": ("dlls/ntdll/signal_arm64ec.c", ["ARM64EC_NT_XCONTEXT", "RtlWow64SuspendThread"]),
+        "include_winternl_h.patch": ("include/winternl.h", ["ProcessFexHardwareTso", "THREAD_CREATE_FLAGS_BYPASS_PROCESS_FREEZE", "RtlWow64SuspendThread", "MemoryFexStatsShm"]),
+    }
+    if patch_name in marker_map:
+        rel, markers = marker_map[patch_name]
+        target = os.path.join(wine_src, rel)
+        if os.path.exists(target):
+            txt = read_text(target)
+            if all(m in txt for m in markers):
+                return True, "already applied (marker check)"
+
     # Check already-applied first (reverse check) to avoid leaving .rej files.
     rc, out = run(
         ["git", "-C", wine_src, "apply", "--ignore-whitespace", "-C1", "-R", "--check", patch_path],
@@ -436,3 +452,5 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
