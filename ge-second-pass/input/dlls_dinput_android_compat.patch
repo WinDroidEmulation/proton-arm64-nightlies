@@ -1,3 +1,5 @@
+diff --git a/dlls/dinput/dinput_main.c b/dlls/dinput/dinput_main.c
+index 62365f0b323..b4bf6c70851 100644
 --- a/dlls/dinput/dinput_main.c
 +++ b/dlls/dinput/dinput_main.c
 @@ -23,6 +23,7 @@
@@ -8,11 +10,10 @@
  #include <string.h>
  
  #define COBJMACROS
-@@ -84,6 +85,65 @@
- static CRITICAL_SECTION dinput_hook_crit = { &dinput_critsect_debug, -1, 0, 0, 0, 0 };
+@@ -85,6 +86,65 @@ static CRITICAL_SECTION dinput_hook_crit = { &dinput_critsect_debug, -1, 0, 0, 0
  
  static struct list acquired_device_list = LIST_INIT( acquired_device_list );
-+
+ 
 +#ifdef __ANDROID__
 +static BOOL android_dinput_compat_enabled(void)
 +{
@@ -71,10 +72,49 @@
 +    }
 +}
 +#endif
- 
++
  static void unhook_device_window_foreground_changes( struct dinput_device *device )
  {
-@@ -321,6 +381,10 @@
+     if (!device->cbt_hook) return;
+@@ -120,17 +180,22 @@ static LRESULT CALLBACK input_thread_ll_hook_proc( int code, WPARAM wparam, LPAR
+     for (i = state->events_count; i < state->devices_count; ++i)
+     {
+         struct dinput_device *device = state->devices[i];
+-        if (device->use_raw_input) continue;
+         if (device->instance.dwDevType & DIDEVTYPE_HID) continue;
+         switch (GET_DIDEVICE_TYPE( device->instance.dwDevType ))
+         {
+         case DIDEVTYPE_MOUSE:
+         case DI8DEVTYPE_MOUSE:
++#ifdef __ANDROID__
++            if (device->use_raw_input && !android_dinput_compat_enabled()) continue;
++#else
++            if (device->use_raw_input) continue;
++#endif
+             TRACE( "calling dinput_mouse_hook (%p %Ix %Ix)\n", device, wparam, lparam );
+             skip |= dinput_mouse_hook( &device->IDirectInputDevice8W_iface, wparam, lparam );
+             break;
+         case DIDEVTYPE_KEYBOARD:
+         case DI8DEVTYPE_KEYBOARD:
++            if (device->use_raw_input) continue;
+             TRACE( "calling dinput_keyboard_hook (%p %Ix %Ix)\n", device, wparam, lparam );
+             skip |= dinput_keyboard_hook( &device->IDirectInputDevice8W_iface, wparam, lparam );
+             break;
+@@ -232,6 +297,13 @@ static void input_thread_update_device_list( struct input_thread_state *state )
+         case DI8DEVTYPE_MOUSE:
+             if (device->dwCoopLevel & DISCL_EXCLUSIVE) rawinput_mouse.dwFlags |= RIDEV_CAPTUREMOUSE;
+             if (!device->use_raw_input) mouse_ll_count++;
++#ifdef __ANDROID__
++            else if (android_dinput_compat_enabled())
++            {
++                mouse_ll_count++;
++                rawinput_device = &rawinput_mouse;
++            }
++#endif
+             else rawinput_device = &rawinput_mouse;
+             break;
+         case DIDEVTYPE_KEYBOARD:
+@@ -321,6 +393,10 @@ static LRESULT WINAPI di_em_win_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
                  default: break;
                  }
              }
@@ -84,4 +124,3 @@
 +#endif
          }
      }
- 
