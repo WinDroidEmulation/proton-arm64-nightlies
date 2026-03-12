@@ -438,14 +438,19 @@ jobs:
         continue-on-error: true
         run: |
           cd wine-source
-          bash "build-scripts/${{ matrix.build_script }}" --configure
+          set -o pipefail
+          bash -e "build-scripts/${{ matrix.build_script }}" --configure 2>&1 | tee configure-run.log
           test -f Makefile
 
       - name: Dump configure logs
         if: steps.configure_build.outcome == 'failure'
         run: |
           cd wine-source
-          echo "ERROR: configure did not produce wine-source/Makefile"
+          echo "ERROR: configure did not produce ./Makefile or configure exited early"
+          if [ -f ./configure-run.log ]; then
+            echo "=== tail: ./configure-run.log ==="
+            tail -n 250 ./configure-run.log || true
+          fi
           find . -maxdepth 2 \( -name config.log -o -name configure.log -o -name config.status \) -print || true
           if [ -f ./config.log ]; then
             echo "=== tail: ./config.log ==="
@@ -776,7 +781,6 @@ jobs:
           rm -rf "$RUNNER_TEMP"/* || true
           echo "=== Disk usage after cleanup ==="
           df -h
-
 
 
 

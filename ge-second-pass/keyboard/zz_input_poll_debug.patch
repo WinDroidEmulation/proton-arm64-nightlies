@@ -327,7 +327,7 @@ diff --git a/dlls/dinput/dinput_main.c b/dlls/dinput/dinput_main.c
  #define INPUT_THREAD_NOTIFY     (WM_USER + 0x10)
  #define NOTIFY_THREAD_STOP      0
  #define NOTIFY_REFRESH_DEVICES  1
-@@ -180,6 +188,10 @@
+@@ -198,6 +206,10 @@ static LRESULT CALLBACK input_thread_ll_hook_proc( int code, WPARAM wparam, LPAR
      for (i = state->events_count; i < state->devices_count; ++i)
      {
          struct dinput_device *device = state->devices[i];
@@ -335,10 +335,9 @@ diff --git a/dlls/dinput/dinput_main.c b/dlls/dinput/dinput_main.c
 +            ERR( "INPUTDBG dinput.ll_dispatch iface=%p devtype=%#lx raw=%u coop=%#lx msg=%#Ix lparam=%#Ix\n",
 +                 &device->IDirectInputDevice8W_iface, device->instance.dwDevType, device->use_raw_input,
 +                 device->dwCoopLevel, wparam, lparam );
-         if (device->use_raw_input) continue;
          if (device->instance.dwDevType & DIDEVTYPE_HID) continue;
          switch (GET_DIDEVICE_TYPE( device->instance.dwDevType ))
-@@ -275,6 +287,10 @@
+@@ -340,6 +352,10 @@ static void input_thread_update_device_list( struct input_thread_state *state )
          if (device->dwCoopLevel & DISCL_FOREGROUND) hook_device_window_foreground_changes( device );
  
          if (!device->read_event || !device->vtbl->read) continue;
@@ -349,7 +348,7 @@ diff --git a/dlls/dinput/dinput_main.c b/dlls/dinput/dinput_main.c
          state->events[count] = device->read_event;
          dinput_device_internal_addref( (state->devices[count] = device) );
          if (++count >= state->devices_capacity) break;
-@@ -301,6 +317,11 @@
+@@ -382,6 +398,11 @@ static void input_thread_update_device_list( struct input_thread_state *state )
              else rawinput_device = &rawinput_keyboard;
              break;
          }
@@ -361,11 +360,8 @@ diff --git a/dlls/dinput/dinput_main.c b/dlls/dinput/dinput_main.c
  
          if (rawinput_device)
          {
-@@ -341,6 +362,11 @@
- 
-     state->rawinput_devices[0] = rawinput_mouse;
-     state->rawinput_devices[1] = rawinput_keyboard;
-+
+@@ -424,6 +445,11 @@ static void input_thread_update_device_list( struct input_thread_state *state )
+ #endif
 +    if (input_poll_debug_enabled())
 +        ERR( "INPUTDBG dinput.route_summary events=%u devices=%u kbd_ll=%u mouse_ll=%u raw_mouse_flags=%#x raw_kbd_flags=%#x\n",
 +             state->events_count, state->devices_count, keyboard_ll_count, mouse_ll_count,
@@ -373,7 +369,7 @@ diff --git a/dlls/dinput/dinput_main.c b/dlls/dinput/dinput_main.c
  }
  
  static LRESULT WINAPI di_em_win_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
-@@ -364,6 +390,10 @@
+@@ -464,6 +490,10 @@ static LRESULT WINAPI di_em_win_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
              for (i = state->events_count; i < state->devices_count; ++i)
              {
                  struct dinput_device *device = state->devices[i];
