@@ -1,14 +1,3 @@
---- a/dlls/dinput/dinput_private.h
-+++ b/dlls/dinput/dinput_private.h
-@@ -75,6 +75,8 @@
-                                         RAWINPUT *raw );
- extern void dinput_keyboard_rawinput_hook( IDirectInputDevice8W *iface, WPARAM wparam, LPARAM lparam,
-                                            RAWINPUT *raw );
-+extern void dinput_keyboard_android_compat_mirror_state( IDirectInputDevice8W *iface, int dik_code,
-+                                                         BYTE new_diks );
- 
- extern void check_dinput_events(void);
- 
 --- a/dlls/dinput/dinput_main.c
 +++ b/dlls/dinput/dinput_main.c
 @@ -23,6 +23,7 @@
@@ -19,28 +8,45 @@
  #include <string.h>
  
  #define COBJMACROS
-@@ -84,6 +85,53 @@
+@@ -84,6 +85,65 @@
  static CRITICAL_SECTION dinput_hook_crit = { &dinput_critsect_debug, -1, 0, 0, 0, 0 };
  
  static struct list acquired_device_list = LIST_INIT( acquired_device_list );
 +
-+void dinput_keyboard_android_compat_mirror_state( IDirectInputDevice8W *iface, int dik_code, BYTE new_diks )
-+{
 +#ifdef __ANDROID__
-+    struct dinput_device *device, *targets[8];
-+    UINT count = 0, i;
-+    DWORD id = DIDFT_PSHBUTTON | DIDFT_MAKEINSTANCE( dik_code );
++static BOOL android_dinput_compat_enabled(void)
++{
++    return getenv( "WINE_ANDROID_DINPUT_COMPAT" ) != NULL;
++}
 +
-+    if (!getenv( "WINE_ANDROID_DINPUT_COMPAT" )) return;
++static void dinput_android_compat_fanout_rawinput( RAWINPUT *ri, WPARAM wparam, LPARAM lparam )
++{
++    struct dinput_device *device, *targets[16];
++    UINT count = 0, i;
++
++    if (!android_dinput_compat_enabled()) return;
 +
 +    EnterCriticalSection( &dinput_hook_crit );
 +    LIST_FOR_EACH_ENTRY( device, &acquired_device_list, struct dinput_device, entry )
 +    {
-+        if (&device->IDirectInputDevice8W_iface == iface) continue;
-+        if (!IsEqualGUID( &device->guid, &GUID_SysKeyboard )) continue;
 +        if (device->status != STATUS_ACQUIRED) continue;
 +        if (device->use_raw_input) continue;
-+        if (device->user_format.dwDataSize != 272) continue;
++        if (device->instance.dwDevType & DIDEVTYPE_HID) continue;
++
++        switch (GET_DIDEVICE_TYPE( device->instance.dwDevType ))
++        {
++        case DIDEVTYPE_MOUSE:
++        case DI8DEVTYPE_MOUSE:
++            if (ri->header.dwType != RIM_TYPEMOUSE) continue;
++            break;
++        case DIDEVTYPE_KEYBOARD:
++        case DI8DEVTYPE_KEYBOARD:
++            if (ri->header.dwType != RIM_TYPEKEYBOARD) continue;
++            break;
++        default:
++            continue;
++        }
++
 +        dinput_device_internal_addref( device );
 +        targets[count++] = device;
 +        if (count >= ARRAY_SIZE( targets )) break;
@@ -49,109 +55,33 @@
 +
 +    for (i = 0; i < count; ++i)
 +    {
-+        struct dinput_device *target = targets[i];
-+        DIOBJECTDATAFORMAT *obj;
-+        int index;
-+
-+        EnterCriticalSection( &target->crit );
-+        index = dinput_device_object_index_from_id( &target->IDirectInputDevice8W_iface, id );
-+        if (index >= 0 && (obj = target->device_format.rgodf + index))
++        device = targets[i];
++        switch (GET_DIDEVICE_TYPE( device->instance.dwDevType ))
 +        {
-+            if (target->device_state[obj->dwOfs] != new_diks)
-+            {
-+                target->device_state[obj->dwOfs] = new_diks;
-+                queue_event( &target->IDirectInputDevice8W_iface, index, new_diks, GetCurrentTime(), target->dinput->evsequence++ );
-+                if (target->hEvent) SetEvent( target->hEvent );
-+            }
++        case DIDEVTYPE_MOUSE:
++        case DI8DEVTYPE_MOUSE:
++            dinput_mouse_rawinput_hook( &device->IDirectInputDevice8W_iface, wparam, lparam, ri );
++            break;
++        case DIDEVTYPE_KEYBOARD:
++        case DI8DEVTYPE_KEYBOARD:
++            dinput_keyboard_rawinput_hook( &device->IDirectInputDevice8W_iface, wparam, lparam, ri );
++            break;
 +        }
-+        LeaveCriticalSection( &target->crit );
-+
-+        dinput_device_internal_release( target );
++        dinput_device_internal_release( device );
 +    }
-+#endif
 +}
++#endif
  
  static void unhook_device_window_foreground_changes( struct dinput_device *device )
  {
---- a/dlls/dinput/keyboard.c
-+++ b/dlls/dinput/keyboard.c
-@@ -21,6 +21,7 @@
-  */
- 
- #include <stdarg.h>
-+#include <stdlib.h>
- #include <string.h>
- #include "windef.h"
- #include "winbase.h"
-@@ -35,6 +36,15 @@
- WINE_DEFAULT_DEBUG_CHANNEL(dinput);
- 
- static const struct dinput_device_vtbl keyboard_vtbl;
-+
-+static BOOL android_dinput_compat_enabled(void)
-+{
+@@ -321,6 +381,10 @@
+                 default: break;
+                 }
+             }
 +#ifdef __ANDROID__
-+    return getenv( "WINE_ANDROID_DINPUT_COMPAT" ) != NULL;
-+#else
-+    return FALSE;
++            if (ri.header.dwType == RIM_TYPEMOUSE || ri.header.dwType == RIM_TYPEKEYBOARD)
++                dinput_android_compat_fanout_rawinput( &ri, wparam, lparam );
 +#endif
-+}
+         }
+     }
  
- struct keyboard
- {
-@@ -115,6 +125,9 @@
- 
-     if (impl->base.hEvent) SetEvent( impl->base.hEvent );
-     LeaveCriticalSection( &impl->base.crit );
-+
-+    if (android_dinput_compat_enabled())
-+        dinput_keyboard_android_compat_mirror_state( iface, dik_code, new_diks );
- }
- 
- void dinput_keyboard_rawinput_hook( IDirectInputDevice8W *iface, WPARAM wparam, LPARAM lparam, RAWINPUT *ri )
-@@ -206,7 +219,8 @@
-     impl->base.caps.dwDevType = impl->base.instance.dwDevType;
-     impl->base.caps.dwFirmwareRevision = 100;
-     impl->base.caps.dwHardwareRevision = 100;
--    if (dinput->dwVersion >= 0x0800) impl->base.use_raw_input = TRUE;
-+    if (dinput->dwVersion >= 0x0800 && !android_dinput_compat_enabled())
-+        impl->base.use_raw_input = TRUE;
-     subtype = GET_DIDEVICE_SUBTYPE( impl->base.instance.dwDevType );
- 
-     if (FAILED(hr = dinput_device_init_device_format( &impl->base.IDirectInputDevice8W_iface ))) goto failed;
---- a/dlls/dinput/mouse.c
-+++ b/dlls/dinput/mouse.c
-@@ -20,6 +20,7 @@
-  */
- 
- #include <stdarg.h>
-+#include <stdlib.h>
- #include <string.h>
- 
- #include "windef.h"
-@@ -38,6 +39,15 @@
- WINE_DEFAULT_DEBUG_CHANNEL(dinput);
- 
- static const struct dinput_device_vtbl mouse_vtbl;
-+
-+static BOOL android_dinput_compat_enabled(void)
-+{
-+#ifdef __ANDROID__
-+    return getenv( "WINE_ANDROID_DINPUT_COMPAT" ) != NULL;
-+#else
-+    return FALSE;
-+#endif
-+}
- 
- typedef enum
- {
-@@ -530,7 +540,8 @@
-     impl->base.caps.dwFirmwareRevision = 100;
-     impl->base.caps.dwHardwareRevision = 100;
-     impl->base.dwCoopLevel = DISCL_NONEXCLUSIVE | DISCL_BACKGROUND;
--    if (dinput->dwVersion >= 0x0800) impl->base.use_raw_input = TRUE;
-+    if (dinput->dwVersion >= 0x0800 && !android_dinput_compat_enabled())
-+        impl->base.use_raw_input = TRUE;
- 
-     if (FAILED(hr = dinput_device_init_device_format( &impl->base.IDirectInputDevice8W_iface ))) goto failed;
-     mouse_enum_objects( &impl->base.IDirectInputDevice8W_iface, &filter, DIDFT_AXIS, init_object_properties, NULL );
