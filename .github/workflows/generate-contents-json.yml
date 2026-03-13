@@ -12,12 +12,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Generate contents.json
+      - name: Generate contents.json from release assets
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ github.event.release.tag_name }}
-          RELEASE_ID: ${{ github.event.release.id }}
         run: |
           python3 << 'PY'
           import json
@@ -28,10 +27,7 @@ jobs:
           tag = os.environ["TAG"]
 
           result = subprocess.run(
-              [
-                  "gh", "api",
-                  f"repos/{repo}/releases/tags/{tag}"
-              ],
+              ["gh", "api", f"repos/{repo}/releases/tags/{tag}"],
               capture_output=True,
               text=True,
               check=True
@@ -41,41 +37,48 @@ jobs:
           assets = release.get("assets", [])
 
           contents = []
+
           for asset in assets:
               name = asset["name"]
+              url = asset["browser_download_url"]
 
-              # Ignore source code archives and the manifest itself
-              if name in ("contents.json",):
-                  continue
-              if name.startswith("Source code"):
-                  continue
-              if name.endswith(".zip") and "source" in name.lower():
-                  continue
-              if name.endswith(".tar.gz") and "source" in name.lower():
+              if name == "contents.json":
                   continue
 
-              download_url = asset["browser_download_url"]
+              if name.lower().startswith("source code"):
+                  continue
 
-              if name.endswith(".wcp.xz"):
-                  title = f"{name} (Compressed)"
-                  description = "Compressed Proton ARM64EC build"
-              elif name.endswith(".wcp"):
-                  title = f"{name} (WCP)"
-                  description = "Proton ARM64EC build"
+              if url.endswith("/zipball/" + tag) or url.endswith("/tarball/" + tag):
+                  continue
+
+              lower = name.lower()
+
+              if lower.endswith(".wcp.xz"):
+                  asset_type = "proton"
+                  description = "Compressed build"
+              elif lower.endswith(".wcp"):
+                  asset_type = "proton"
+                  description = "Build package"
+              elif lower.endswith(".xz"):
+                  asset_type = "proton"
+                  description = "Compressed asset"
+              elif lower.endswith(".zip"):
+                  asset_type = "proton"
+                  description = "ZIP asset"
               else:
-                  title = name
+                  asset_type = "proton"
                   description = "Release asset"
 
               contents.append({
-                  "title": title,
-                  "type": "proton",
+                  "title": name,
+                  "type": asset_type,
                   "fileName": name,
-                  "url": download_url,
+                  "url": url,
                   "description": description
               })
 
           manifest = {
-              "name": "WinDroidEmulation Proton ARM64 Repo",
+              "name": "WinDroidEmulation Proton Repo",
               "author": "WinDroidEmulation",
               "version": 1,
               "contents": contents
@@ -87,7 +90,7 @@ jobs:
           print("Generated contents.json")
           PY
 
-      - name: Delete old contents.json if it exists
+      - name: Delete old contents.json if present
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -95,14 +98,12 @@ jobs:
         run: |
           ASSET_ID=$(gh api repos/$REPO/releases/tags/$TAG --jq '.assets[] | select(.name=="contents.json") | .id' || true)
           if [ -n "$ASSET_ID" ]; then
-            gh api \
-              --method DELETE \
-              repos/$REPO/releases/assets/$ASSET_ID
+            gh api --method DELETE repos/$REPO/releases/assets/$ASSET_ID
           fi
 
-      - name: Upload contents.json to release
+      - name: Upload contents.json
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          gh release upload "$TAG" contents.json --clobber
+          gh release upload "$TAG" contents.json
