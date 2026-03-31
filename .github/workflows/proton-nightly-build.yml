@@ -254,7 +254,7 @@ jobs:
             wine-source/android/patches/dlls_winex11_drv_opengl_c.patch
 
           OPTIONAL_SHELL32_PATCH="shell32_shlfileop_init_path_components.patch"
-          cp "patches/ge-gamenative-firstpass/shell32/$OPTIONAL_SHELL32_PATCH" \
+          cp "$GITHUB_WORKSPACE/patches/ge-gamenative-firstpass/shell32/$OPTIONAL_SHELL32_PATCH" \
             "wine-source/android/patches/$OPTIONAL_SHELL32_PATCH"
           python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-arm64ec.sh \
             "$OPTIONAL_SHELL32_PATCH"
@@ -264,7 +264,7 @@ jobs:
           printf '%s\n' "$OPTIONAL_SHELL32_PATCH"
 
           OPTIONAL_EXPLORER_PATCH="explorer_startmenu_shutdown_latch.patch"
-          cp "patches/ge-gamenative-firstpass/explorer/$OPTIONAL_EXPLORER_PATCH" \
+          cp "$GITHUB_WORKSPACE/patches/ge-gamenative-firstpass/explorer/$OPTIONAL_EXPLORER_PATCH" \
             "wine-source/android/patches/$OPTIONAL_EXPLORER_PATCH"
           python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-arm64ec.sh \
             "$OPTIONAL_EXPLORER_PATCH"
@@ -279,7 +279,7 @@ jobs:
               0164-server-Add-an-object-operation-to-retrieve-an-in-pro.patch \
               0165-ntsync-implementation.patch \
               0166-Finish-up-ntsync-console-implementation.patch; do
-              cp "patches/ge-wine-only-wrapper/patches/wine-hotfixes/wine-wayland/$ntsync_patch" \
+              cp "$GITHUB_WORKSPACE/patches/ge-wine-only-wrapper/patches/wine-hotfixes/wine-wayland/$ntsync_patch" \
                 "wine-source/android/patches/$ntsync_patch"
             done
             python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-arm64ec.sh \
@@ -322,12 +322,12 @@ jobs:
             OPTIONAL_GE_PERF_PATCH="6559c43-ntdll-validate-fd-type-in-ioctl-afd-wine-complete-async.patch"
             OPTIONAL_GE_EVENT_PATCH="dlls_winex11_drv_event_c.patch"
             mkdir -p "$OPTIONAL_GE_PERF_DIR"
-            cp "ge-second-pass/performance/$OPTIONAL_GE_PERF_PATCH" "$OPTIONAL_GE_PERF_DIR/"
+            cp "$GITHUB_WORKSPACE/ge-second-pass/performance/$OPTIONAL_GE_PERF_PATCH" "$OPTIONAL_GE_PERF_DIR/"
             cp "$OPTIONAL_GE_PERF_DIR"/*.patch wine-source/android/patches/
-            cp "ge-second-pass/mouse/dlls_winex11_drv_mouse_c.patch" "wine-source/android/patches/dlls_winex11_drv_mouse_c.patch"
+            cp "$GITHUB_WORKSPACE/ge-second-pass/mouse/dlls_winex11_drv_mouse_c.patch" "wine-source/android/patches/dlls_winex11_drv_mouse_c.patch"
             python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-arm64ec.sh "$OPTIONAL_GE_PERF_PATCH"
             python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-x86_64.sh "$OPTIONAL_GE_PERF_PATCH"
-            cp "ge-second-pass/focus/$OPTIONAL_GE_EVENT_PATCH" "$OPTIONAL_GE_PERF_DIR/"
+            cp "$GITHUB_WORKSPACE/ge-second-pass/focus/$OPTIONAL_GE_EVENT_PATCH" "$OPTIONAL_GE_PERF_DIR/"
             cp "$OPTIONAL_GE_PERF_DIR/$OPTIONAL_GE_EVENT_PATCH" wine-source/android/patches/
             python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-arm64ec.sh "$OPTIONAL_GE_EVENT_PATCH"
             python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-x86_64.sh "$OPTIONAL_GE_EVENT_PATCH"
@@ -337,8 +337,8 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dinput_android_compat_workaround && 'true' || 'false' }}" = "true" ]; then
             OPTIONAL_DINPUT_ANDROID_COMPAT_PATCH="dlls_dinput_android_compat.patch"
             OPTIONAL_ANDROID_RELATIVE_MOUSE_PATCH="dlls_wineandroid_drv_window_c.patch"
-            cp "ge-second-pass/input/$OPTIONAL_DINPUT_ANDROID_COMPAT_PATCH" "wine-source/android/patches/$OPTIONAL_DINPUT_ANDROID_COMPAT_PATCH"
-            cp "ge-second-pass/input/$OPTIONAL_ANDROID_RELATIVE_MOUSE_PATCH" "wine-source/android/patches/$OPTIONAL_ANDROID_RELATIVE_MOUSE_PATCH"
+            cp "$GITHUB_WORKSPACE/ge-second-pass/input/$OPTIONAL_DINPUT_ANDROID_COMPAT_PATCH" "wine-source/android/patches/$OPTIONAL_DINPUT_ANDROID_COMPAT_PATCH"
+            cp "$GITHUB_WORKSPACE/ge-second-pass/input/$OPTIONAL_ANDROID_RELATIVE_MOUSE_PATCH" "wine-source/android/patches/$OPTIONAL_ANDROID_RELATIVE_MOUSE_PATCH"
             python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-arm64ec.sh "$OPTIONAL_DINPUT_ANDROID_COMPAT_PATCH"
             python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-x86_64.sh "$OPTIONAL_DINPUT_ANDROID_COMPAT_PATCH"
             python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-arm64ec.sh "$OPTIONAL_ANDROID_RELATIVE_MOUSE_PATCH"
@@ -350,8 +350,8 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.input_poll_debug && 'true' || 'false' }}" = "true" ]; then
             OPTIONAL_INPUT_DEBUG_PATCH="zz_input_poll_debug.patch"
             OPTIONAL_DINPUT_INSTANCE_DEBUG_PATCH="zz_dinput_instance_debug.patch"
-            cp "ge-second-pass/keyboard/$OPTIONAL_INPUT_DEBUG_PATCH" "wine-source/android/patches/$OPTIONAL_INPUT_DEBUG_PATCH"
-            cp "ge-second-pass/input/$OPTIONAL_DINPUT_INSTANCE_DEBUG_PATCH" "wine-source/android/patches/$OPTIONAL_DINPUT_INSTANCE_DEBUG_PATCH"
+            cp "$GITHUB_WORKSPACE/ge-second-pass/keyboard/$OPTIONAL_INPUT_DEBUG_PATCH" "wine-source/android/patches/$OPTIONAL_INPUT_DEBUG_PATCH"
+            cp "$GITHUB_WORKSPACE/ge-second-pass/input/$OPTIONAL_DINPUT_INSTANCE_DEBUG_PATCH" "wine-source/android/patches/$OPTIONAL_DINPUT_INSTANCE_DEBUG_PATCH"
             python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-arm64ec.sh "$OPTIONAL_INPUT_DEBUG_PATCH"
             python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-x86_64.sh "$OPTIONAL_INPUT_DEBUG_PATCH"
             python3 scripts/inject_optional_patches.py wine-source/build-scripts/build-step-arm64ec.sh "$OPTIONAL_DINPUT_INSTANCE_DEBUG_PATCH"
@@ -852,7 +852,6 @@ jobs:
           rm -rf "$RUNNER_TEMP"/* || true
           echo "=== Disk usage after cleanup ==="
           df -h
-
 
 
 
