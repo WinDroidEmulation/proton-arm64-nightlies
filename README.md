@@ -23,6 +23,8 @@ The build also carries the local explorer shutdown workaround so exiting from th
 
 Optional `ntsync` support is available for manual builds and workflow-dispatch runs, but it is intentionally opt-in because it is a substantial sync backend change and depends on target kernel support.
 
+There is also an optional GE compatibility bundle for manual builds and workflow-dispatch runs. The current first-pass set is intentionally small and focused on broad app compatibility: the D2D no-target crash fix, the `win32u` window-decoration env switch, and the registry `RRF_RT_REG_SZ`/`RRF_RT_REG_EXPAND_SZ` fix.
+
 ## Getting a Build
 
 1. Open [Releases](../../releases)

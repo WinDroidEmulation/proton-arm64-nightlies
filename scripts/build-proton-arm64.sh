@@ -14,6 +14,7 @@
 #   --skip-tools          Skip host tools build (if already built)
 #   --enable-ntsync       Apply the optional ntsync patch series
 #   --enable-ge-perf      Apply the optional GE performance patch bundle
+#   --enable-ge-compat    Apply the optional GE compatibility patch bundle
 #   --clean               Clean build directory before starting
 #
 # Environment variables:
@@ -35,6 +36,7 @@ SKIP_TOOLS=0
 CLEAN_BUILD=0
 ENABLE_NTSYNC=0
 ENABLE_GE_PERF=0
+ENABLE_GE_COMPAT=0
 ANDROID_API=28
 PROFILE_VERSION="${PROFILE_VERSION:-10.0.99-arm64ec}"
 PROFILE_VERSION_CODE="${PROFILE_VERSION_CODE:-1}"
@@ -50,6 +52,7 @@ while [[ $# -gt 0 ]]; do
         --skip-tools)     SKIP_TOOLS=1;       shift ;;
         --enable-ntsync)  ENABLE_NTSYNC=1;    shift ;;
         --enable-ge-perf) ENABLE_GE_PERF=1;   shift ;;
+        --enable-ge-compat) ENABLE_GE_COMPAT=1; shift ;;
         --clean)          CLEAN_BUILD=1;      shift ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
@@ -144,6 +147,15 @@ if [[ $ENABLE_GE_PERF -eq 1 ]]; then
         "$SCRIPT_DIR/../patches/ge-wine-only-wrapper/patches/wine-hotfixes/wine-wayland/0114-HACK-opengl32-Reuse-allocated-memory.patch" \
         "$SCRIPT_DIR/../patches/ge-wine-only-wrapper/patches/wine-hotfixes/wine-wayland/0115-fixup-opengl32-Support-map-buffer-offsets.patch" \
         "$SCRIPT_DIR/../patches/ge-wine-only-wrapper/patches/wine-hotfixes/wine-wayland/0127-opengl32-Use-VirtualAlloc-instead-of-NtAllocateVirtu.patch"
+fi
+
+if [[ $ENABLE_GE_COMPAT -eq 1 ]]; then
+    log "Applying optional GE compatibility patch bundle"
+    "$SCRIPT_DIR/apply_patch_series.sh" \
+        "$SOURCE_DIR" \
+        "$SCRIPT_DIR/../patches/ge-wine-only-wrapper/patches/proton/fix-a-crash-in-ID2D1DeviceContext-if-no-target-is-set.patch" \
+        "$SCRIPT_DIR/../patches/ge-wine-only-wrapper/patches/proton/0001-win32u-add-env-switch-to-disable-wm-decorations.patch" \
+        "$SCRIPT_DIR/../patches/ge-wine-only-wrapper/patches/wine-hotfixes/pending/registry_RRF_RT_REG_SZ-RRF_RT_REG_EXPAND_SZ.patch"
 fi
 
 # --- Clean if requested ---
