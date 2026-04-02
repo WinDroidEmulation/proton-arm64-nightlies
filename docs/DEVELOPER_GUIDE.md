@@ -16,7 +16,7 @@ Current high-level flow:
    - `proton-wine-*.wcp.xz` with XZ
 
 That local patch layer includes `patches/ge-gamenative-firstpass/explorer/explorer_startmenu_shutdown_latch.patch`, which avoids the blank mouse-only screen after exiting from the Start menu or a shortcut-launched game.
-It can also opt into the local `ntsync` patch chain from `patches/ge-wine-only-wrapper/patches/wine-hotfixes/wine-wayland/0163-...0166-...` for explicit test builds.
+It can also opt into the local `ntsync` patch chain from `patches/ge-wine-only-wrapper/patches/wine-hotfixes/wine-wayland/0163-...0166-...` for explicit test builds. The repo-side ntsync gate now auto-enables only when `/dev/ntsync` can actually be opened; `WINENTSYNC=1` force-enables it and `WINENTSYNC=0` disables it.
 The optional GE performance bundle now also includes the generic `opengl32` wow64 buffer-mapping speedup series from that tree: `0113`, `0114`, `0115`, and `0127`, plus the existing `6559c43` AFD completion patch.
 The optional GE compatibility bundle currently carries three low-risk first-pass patches from the repo classification set: `fix-a-crash-in-ID2D1DeviceContext-if-no-target-is-set.patch`, `0001-win32u-add-env-switch-to-disable-wm-decorations.patch`, and `registry_RRF_RT_REG_SZ-RRF_RT_REG_EXPAND_SZ.patch`.
 

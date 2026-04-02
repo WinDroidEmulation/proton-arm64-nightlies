@@ -21,7 +21,7 @@ The internal profile version stays numeric on purpose so stock GameNative recogn
 
 The build also carries the local explorer shutdown workaround so exiting from the Start menu or a shortcut-launched game returns cleanly instead of leaving the blank pointer screen reported in Winlator issue 55.
 
-Optional `ntsync` support is available for manual builds and workflow-dispatch runs, but it is intentionally opt-in because it is a substantial sync backend change and depends on target kernel support.
+Optional `ntsync` support is available for manual builds and workflow-dispatch runs, but it is intentionally opt-in because it is a substantial sync backend change and depends on target kernel support. In these builds, ntsync only auto-enables when `/dev/ntsync` is actually openable by the app process; `WINENTSYNC=1` still force-enables it, and `WINENTSYNC=0` disables it.
 
 There is also an optional GE compatibility bundle for manual builds and workflow-dispatch runs. The current first-pass set is intentionally small and focused on broad app compatibility: the D2D no-target crash fix, the `win32u` window-decoration env switch, and the registry `RRF_RT_REG_SZ`/`RRF_RT_REG_EXPAND_SZ` fix.
 
