@@ -62,7 +62,7 @@ REQUIRED_MARKERS = {
         "RtlWow64SuspendThread",
     ],
     "tools/makedep.c": [
-        "aarch64-windows",
+        'arch_install_dirs[arch] = strmake( "$(libdir)/wine/%s-windows", archs.str[arch] );',
         "output_symlink_rule(",
     ],
 }
@@ -188,7 +188,8 @@ def try_apply_patch(wine_src, patch_path):
         "dlls_ntdll_signal_arm64ec_c.patch": ("dlls/ntdll/signal_arm64ec.c", ["ARM64EC_NT_XCONTEXT", "RtlWow64SuspendThread"]),
         "dlls_ntdll_signal_x86_64_c.patch": ("dlls/ntdll/signal_x86_64.c", ["0x3b0+0xcd0", "RtlWow64SuspendThread"]),
         "include_winternl_h.patch": ("include/winternl.h", ["ProcessFexHardwareTso", "THREAD_CREATE_FLAGS_BYPASS_PROCESS_FREEZE", "RtlWow64SuspendThread", "MemoryFexStatsShm"]),
-        "tools_makedep_c.patch": ("tools/makedep.c", ['arch_install_dirs[arch] = "$(libdir)/wine/aarch64-windows/";', 'output_symlink_rule(']),
+        "dlls_ntdll_loader_c.patch": ("dlls/ntdll/loader.c", ["pWow64SuspendLocalThread", "GET_PTR( Wow64SuspendLocalThread )"]),
+        "tools_makedep_c.patch": ("tools/makedep.c", ['arch_install_dirs[arch] = strmake( "$(libdir)/wine/%s-windows", archs.str[arch] );', 'output_symlink_rule(']),
     }
     if patch_name in marker_map:
         rel, markers = marker_map[patch_name]
@@ -403,17 +404,39 @@ def fallback_fix_makedep(wine_src):
     txt = read_text(path)
     notes = []
 
-    if "aarch64-windows" not in txt:
+    if 'arch_install_dirs[arch] = strmake( "$(libdir)/wine/%s-windows", archs.str[arch] );' not in txt:
         pattern = re.compile(r'^(\s*arch_install_dirs\[arch\]\s*=\s*".*-windows/";\s*)$', re.MULTILINE)
         matches = list(pattern.finditer(txt))
         if matches:
             match = matches[-1]
             indent = re.match(r"^(\s*)", match.group(1)).group(1)
-            insertion = match.group(1) + "\n" + indent + 'arch_install_dirs[arch] = "$(libdir)/wine/aarch64-windows/";'
+            insertion = match.group(1) + "\n" + indent + 'arch_install_dirs[arch] = strmake( "$(libdir)/wine/%s-windows", archs.str[arch] );'
             txt = txt[:match.start()] + insertion + txt[match.end():]
-            notes.append(f"FIXED: {rel} add aarch64-windows install dir")
+            notes.append(f"FIXED: {rel} add generic arch_install_dirs[arch] windows mapping")
         else:
-            notes.append(f"WARN: {rel} could not place aarch64-windows install dir")
+            rej_path = path + ".rej"
+            inserted = False
+            if os.path.exists(rej_path):
+                rej = read_text(rej_path)
+                rej_match = re.search(r'^\+.*arch_install_dirs\[arch\].*$', rej, re.MULTILINE)
+                line = rej_match.group(0)[1:] if rej_match else '        arch_install_dirs[arch] = strmake( "$(libdir)/wine/%s-windows", archs.str[arch] );'
+                fallback_anchors = [
+                    "output_symlink_rule(",
+                    "arch_install_dirs[arch]",
+                    "main( int argc, char *argv[] )",
+                ]
+                for anchor in fallback_anchors:
+                    idx = txt.find(anchor)
+                    if idx >= 0:
+                        line_start = txt.rfind("\n", 0, idx) + 1
+                        indent_match = re.match(r"(\s*)", txt[line_start:])
+                        indent = indent_match.group(1) if indent_match else ""
+                        txt = txt[:line_start] + indent + line.strip() + "\n" + txt[line_start:]
+                        inserted = True
+                        notes.append(f"FIXED: {rel} add generic arch_install_dirs[arch] windows mapping from reject hunk")
+                        break
+            if not inserted:
+                notes.append(f"WARN: {rel} could not place generic arch_install_dirs[arch] windows mapping")
 
     write_text(path, txt)
     return notes

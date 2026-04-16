@@ -71,7 +71,7 @@ ALREADY_APPLIED = {
     "test-bylaws/server_thread_c.patch":             ("server/thread.c",              "bypass_proc_suspend"),
     "test-bylaws/dlls_ntdll_unix_thread_c.patch":    ("dlls/ntdll/unix/thread.c",     "BYPASS_PROCESS_FREEZE"),
     "test-bylaws/include_winternl_h.patch":          ("include/winternl.h",           "ProcessFexHardwareTso"),
-    "test-bylaws/tools_makedep_c.patch":             ("tools/makedep.c",              ["arch_install_dirs[arch] = \"$(libdir)/wine/aarch64-windows/\";", "output_symlink_rule("]),
+    "test-bylaws/tools_makedep_c.patch":             ("tools/makedep.c",              ['arch_install_dirs[arch] = strmake( "$(libdir)/wine/%s-windows", archs.str[arch] );', "output_symlink_rule("]),
 }
 
 

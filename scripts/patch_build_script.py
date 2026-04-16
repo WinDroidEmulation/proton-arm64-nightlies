@@ -34,6 +34,7 @@ txt = txt.replace(
     '  test-bylaws/dlls_ntdll_signal_x86_64_c.patch)  _patch_marker="RtlWow64SuspendThread" _patch_file="dlls/ntdll/signal_x86_64.c" ;; '
     '  test-bylaws/dlls_ntdll_ntdll_spec.patch)        _patch_marker="RtlWow64SuspendThread" _patch_file="dlls/ntdll/ntdll.spec" ;; '
     '  test-bylaws/dlls_ntdll_ntdll_misc_h.patch)      _patch_marker="pWow64SuspendLocalThread" _patch_file="dlls/ntdll/ntdll_misc.h" ;; '
+    '  test-bylaws/tools_makedep_c.patch)              _patch_marker="arch_install_dirs[arch] = strmake( \\"$(libdir)/wine/%s-windows\\", archs.str[arch] );" _patch_file="tools/makedep.c" ;; '
     '  test-bylaws/server_thread_h.patch)              _patch_marker="bypass_proc_suspend" _patch_file="server/thread.h" ;; '
     '  test-bylaws/server_thread_c.patch)              _patch_marker="bypass_proc_suspend" _patch_file="server/thread.c" ;; '
     '  test-bylaws/server_process_c.patch)             _patch_marker="bypass_proc_suspend" _patch_file="server/process.c" ;; '
