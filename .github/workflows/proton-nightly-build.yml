@@ -748,6 +748,7 @@ jobs:
           ensure_launcher() {
             local root="$1"
             local candidate
+            local copied_frontend=0
 
             if [ -z "$root" ]; then
               echo "ERROR: ensure_launcher requires a non-empty root path" >&2
@@ -755,6 +756,20 @@ jobs:
             fi
 
             mkdir -p "$root/bin"
+
+            if [ ! -e "$root/bin/wine" ]; then
+              for candidate in \
+                "$root/lib/wine/wine" \
+                "$PWD/tools/wine/wine" \
+                "$PWD/wine"; do
+                if [ -f "$candidate" ]; then
+                  cp -f "$candidate" "$root/bin/wine"
+                  echo "staged launcher frontend: $candidate -> $root/bin/wine"
+                  copied_frontend=1
+                  break
+                fi
+              done
+            fi
 
             if [ ! -e "$root/bin/wine64" ]; then
               for candidate in \
@@ -765,7 +780,7 @@ jobs:
                 "$PWD/loader64/wine64-preloader"; do
                 if [ -f "$candidate" ] && [ ! -e "$root/bin/$(basename "$candidate")" ]; then
                   cp -f "$candidate" "$root/bin/$(basename "$candidate")"
-                  echo "staged launcher: $candidate -> $root/bin/$(basename "$candidate")"
+                  echo "staged launcher payload: $candidate -> $root/bin/$(basename "$candidate")"
                 fi
               done
             fi
@@ -783,6 +798,19 @@ jobs:
             if [ ! -e "$root/bin/wine" ]; then
               echo "ERROR: no runnable wine launcher found under $root" >&2
               return 1
+            fi
+
+            if [ "$copied_frontend" -eq 1 ] && [ ! -e "$root/bin/wine64" ]; then
+              for candidate in \
+                "$root/lib/wine/wine64" \
+                "$root/lib/wine/aarch64-unix/wine64" \
+                "$PWD/loader64/wine64"; do
+                if [ -f "$candidate" ]; then
+                  cp -f "$candidate" "$root/bin/wine64"
+                  echo "staged companion wine64: $candidate -> $root/bin/wine64"
+                  break
+                fi
+              done
             fi
           }
 
