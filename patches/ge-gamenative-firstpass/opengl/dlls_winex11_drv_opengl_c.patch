@@ -1,7 +1,10 @@
 diff --git a/dlls/winex11.drv/opengl.c b/dlls/winex11.drv/opengl.c
+index 0000000..0000000 100644
 --- a/dlls/winex11.drv/opengl.c
 +++ b/dlls/winex11.drv/opengl.c
-@@ -182,6 +182,9 @@ static const struct opengl_drawable_funcs x11drv_egl_surface_funcs;
+@@ -179,9 +179,12 @@ static const struct opengl_drawable_funcs x11drv_pbuffer_funcs;
+ static const struct opengl_drawable_funcs x11drv_egl_surface_funcs;
+ 
  static void init_opengl(void)
  {
      int error_base, event_base;
@@ -10,7 +13,9 @@ diff --git a/dlls/winex11.drv/opengl.c b/dlls/winex11.drv/opengl.c
 +#endif
      unsigned int i;
  
-@@ -329,7 +332,14 @@ static void init_opengl(void)
+     /* No need to load any other libraries as according to the ABI, libGL should be self-sufficient
+      * and includes all other functionality which might be needed. */
+@@ -326,10 +329,17 @@ static void init_opengl(void)
  
      if(!X11DRV_WineGL_InitOpenglInfo()) goto failed;
  
@@ -24,4 +29,10 @@ diff --git a/dlls/winex11.drv/opengl.c b/dlls/winex11.drv/opengl.c
 +#endif
      {
          TRACE("GLX is up and running error_base = %d\n", error_base);
-     } else {
+-    } else {
++    }
++    else
++    {
+         TRACE("GLX support is disabled, disabling OpenGL.\n");
+         goto failed;
+     }
