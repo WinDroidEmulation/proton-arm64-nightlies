@@ -72,9 +72,9 @@ on:
         default: false
         type: boolean
       enable_ntsync:
-        description: 'Apply the optional ntsync patch series'
+        description: 'Apply the ntsync patch series'
         required: false
-        default: false
+        default: true
         type: boolean
 
 jobs:
@@ -259,6 +259,7 @@ jobs:
             python3 scripts/fix_wineboot_c.py wine-source
             python3 scripts/fix_wdscore.py wine-source
             python3 scripts/fix_fsync.py wine-source
+            python3 scripts/fix_runtime_noise.py wine-source
             python3 scripts/fix_virtual_c.py wine-source
             python3 -c "from pathlib import Path; p=Path('wine-source/dlls/winex11.drv/window.c'); s=p.read_text(encoding='utf-8'); old='                /* listen to raw xinput event in the desktop window thread */\n                data->xinput2_rawinput = TRUE;\n                x11drv_xinput2_enable( data->display, DefaultRootWindow( data->display ) );\n'; new='                /* listen to raw xinput event in the desktop window thread */\n#ifndef __ANDROID__\n                data->xinput2_rawinput = TRUE;\n                x11drv_xinput2_enable( data->display, DefaultRootWindow( data->display ) );\n#endif\n'; p.write_text(s.replace(old, new, 1), encoding='utf-8') if old in s and new not in s else None"
             echo "=== GameNative feature patches disabled; mandatory build fixes kept ==="
@@ -271,6 +272,7 @@ jobs:
               'fix_wineboot_c.py kept' \
               'fix_wdscore.py kept' \
               'fix_fsync.py kept' \
+              'fix_runtime_noise.py kept' \
               'fix_virtual_c.py kept' \
               'winex11 window.c Android xinput2_rawinput guard kept via inline build fix' \
               'repo-side feature patch injection skipped'
@@ -301,6 +303,7 @@ jobs:
           printf '%s\n' "$OPTIONAL_SHELL32_PATCH"
 
           python3 scripts/fix_preloader_r_debug_noise.py wine-source
+          python3 scripts/fix_runtime_noise.py wine-source
           echo "=== loader _r_debug log noise workaround applied ==="
 
           python3 scripts/fix_opengl_c.py wine-source
@@ -326,7 +329,7 @@ jobs:
           echo "=== explorer start menu shutdown workaround applied ==="
           printf '%s\n' "$OPTIONAL_EXPLORER_PATCH"
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.enable_ntsync && 'true' || 'false' }}" = "true" ]; then
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] || [ "${{ inputs.enable_ntsync && 'true' || 'false' }}" = "true" ]; then
             for ntsync_patch in \
               0163-ntdll-Retrieve-and-cache-an-ntsync-device-in-wait-ca.patch \
               0164-server-Add-an-object-operation-to-retrieve-an-in-pro.patch \
