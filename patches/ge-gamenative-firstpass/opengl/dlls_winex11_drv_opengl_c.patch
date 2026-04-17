@@ -1,21 +1,16 @@
 diff --git a/dlls/winex11.drv/opengl.c b/dlls/winex11.drv/opengl.c
-index 0000000..0000000 100644
 --- a/dlls/winex11.drv/opengl.c
 +++ b/dlls/winex11.drv/opengl.c
-@@ -179,9 +179,12 @@ static const struct opengl_drawable_funcs x11drv_pbuffer_funcs;
- static const struct opengl_drawable_funcs x11drv_egl_surface_funcs;
- 
- static void init_opengl(void)
+@@ -564,6 +564,9 @@ UINT X11DRV_OpenGLInit( UINT version, const struct opengl_funcs *opengl_funcs, c
  {
      int error_base, event_base;
 +#ifdef __ANDROID__
 +    int wine_x11forceglx = 0;
 +#endif
-     unsigned int i;
  
-     /* No need to load any other libraries as according to the ABI, libGL should be self-sufficient
-      * and includes all other functionality which might be needed. */
-@@ -326,10 +329,17 @@ static void init_opengl(void)
+     if (version != WINE_OPENGL_DRIVER_VERSION)
+     {
+@@ -667,7 +670,14 @@ UINT X11DRV_OpenGLInit( UINT version, const struct opengl_funcs *opengl_funcs, c
  
      if(!X11DRV_WineGL_InitOpenglInfo()) goto failed;
  
@@ -29,10 +24,4 @@ index 0000000..0000000 100644
 +#endif
      {
          TRACE("GLX is up and running error_base = %d\n", error_base);
--    } else {
-+    }
-+    else
-+    {
-         TRACE("GLX support is disabled, disabling OpenGL.\n");
-         goto failed;
-     }
+     } else {
