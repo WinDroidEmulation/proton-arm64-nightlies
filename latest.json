@@ -4,25 +4,25 @@
   "gitHash": "79604fd",
   "wcp": {
     "fileName": "proton-proton-proton_11-20260415-79604fd-arm64ec.wcp",
-    "sha256": "db4003d0cd0aab230980b6323e3b65dc8618d68acfac43d1f1fe03996047d939"
+    "sha256": "a6403106cb735bcd4ec2e0cd0a60b88d43f90d198ebef35f5efe5dbe5b8b84f5"
   },
   "wcpxz": {
     "fileName": "proton-wine-proton-proton_11-20260415-79604fd-arm64ec.wcp.xz",
-    "sha256": "53e3eae26b53eb3e76da06c305925b9c628adebe96ca931929ca6b1274fc1512"
+    "sha256": "a8d6cbe5a7685fa7f570482347d77760717f946f364e1645ec41995e1c212adb"
   },
   "artifacts": {
     "arm64ec": {
       "versionName": "proton-proton_11-20260415-79604fd-arm64ec",
-      "profileVersion": "11-1",
+      "profileVersion": "11-arm64ec",
       "wcp": {
         "fileName": "proton-proton-proton_11-20260415-79604fd-arm64ec.wcp",
-        "sha256": "db4003d0cd0aab230980b6323e3b65dc8618d68acfac43d1f1fe03996047d939"
+        "sha256": "a6403106cb735bcd4ec2e0cd0a60b88d43f90d198ebef35f5efe5dbe5b8b84f5"
       },
       "wcpxz": {
         "fileName": "proton-wine-proton-proton_11-20260415-79604fd-arm64ec.wcp.xz",
-        "sha256": "53e3eae26b53eb3e76da06c305925b9c628adebe96ca931929ca6b1274fc1512"
+        "sha256": "a8d6cbe5a7685fa7f570482347d77760717f946f364e1645ec41995e1c212adb"
       }
     }
   },
-  "releaseTag": "proton_11-20260415-79604fd-run449"
+  "releaseTag": "proton_11-20260415-79604fd-run461"
 }

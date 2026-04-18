@@ -136,7 +136,7 @@ jobs:
             build_script: build-step-arm64ec.sh
             output_dir: compiled-files-aarch64
             prefix_pack: prefixPack-arm64ec.txz
-            profile_version: 11-1
+            profile_version: 11-arm64ec
             display_arch: ARM64EC
             sysvshm: true
 
@@ -746,6 +746,82 @@ jobs:
           echo "=== wine binary type ==="
           file "$OUTPUT_DIR/bin/wine" 2>/dev/null || true
           file "$OUTPUT_DIR/bin/wineserver" 2>/dev/null || true
+
+          echo "=== Normalizing Proton 11 launcher layout ==="
+          ensure_launcher() {
+            local root="$1"
+            local candidate
+            local copied_frontend=0
+
+            if [ -z "$root" ]; then
+              echo "ERROR: ensure_launcher requires a non-empty root path" >&2
+              return 1
+            fi
+
+            mkdir -p "$root/bin"
+
+            if [ ! -e "$root/bin/wine" ]; then
+              for candidate in \
+                "$root/lib/wine/wine" \
+                "$PWD/wine" \
+                "$PWD/loader64/wine64" \
+                "$PWD/loader64/wine64.exe.so"; do
+                if [ -f "$candidate" ]; then
+                  cp -f "$candidate" "$root/bin/wine"
+                  echo "staged launcher frontend: $candidate -> $root/bin/wine"
+                  copied_frontend=1
+                  break
+                fi
+              done
+            fi
+
+            if [ ! -e "$root/bin/wine64" ]; then
+              for candidate in \
+                "$root/lib/wine/wine64" \
+                "$root/lib/wine/aarch64-unix/wine64" \
+                "$PWD/loader64/wine64" \
+                "$PWD/loader64/wine64.exe.so" \
+                "$PWD/loader64/wine64-preloader"; do
+                if [ -f "$candidate" ] && [ ! -e "$root/bin/$(basename "$candidate")" ]; then
+                  cp -f "$candidate" "$root/bin/$(basename "$candidate")"
+                  echo "staged launcher payload: $candidate -> $root/bin/$(basename "$candidate")"
+                fi
+              done
+            fi
+
+            if [ ! -e "$root/bin/wine" ] && [ -f "$root/bin/wine64" ]; then
+              cp -f "$root/bin/wine64" "$root/bin/wine"
+              echo "created bin/wine from bin/wine64"
+            fi
+
+            if [ ! -e "$root/bin/wine" ] && [ -f "$root/bin/wine64.exe.so" ]; then
+              cp -f "$root/bin/wine64.exe.so" "$root/bin/wine"
+              echo "created bin/wine from bin/wine64.exe.so"
+            fi
+
+            if [ ! -e "$root/bin/wine" ]; then
+              echo "ERROR: no runnable wine launcher found under $root" >&2
+              return 1
+            fi
+
+            if [ "$copied_frontend" -eq 1 ] && [ ! -e "$root/bin/wine64" ]; then
+              for candidate in \
+                "$root/lib/wine/wine64" \
+                "$root/lib/wine/aarch64-unix/wine64" \
+                "$PWD/loader64/wine64"; do
+                if [ -f "$candidate" ]; then
+                  cp -f "$candidate" "$root/bin/wine64"
+                  echo "staged companion wine64: $candidate -> $root/bin/wine64"
+                  break
+                fi
+              done
+            fi
+          }
+
+          ensure_launcher "$OUTPUT_DIR"
+
+          echo "=== normalized bin contents ==="
+          ls -la "$OUTPUT_DIR/bin/" || true
 
           echo "=== Ensuring core D3D DLLs are staged ==="
           ensure_d3d_dll() {

@@ -35,7 +35,7 @@ Example current Proton metadata:
 
 ```json
 {
-  "type": "proton",
+  "type": "Proton",
   "versionName": "11",
   "versionCode": 1,
   "description": "Proton_11 ARM64 20260307 (abcdef0)",
@@ -55,7 +55,7 @@ The external `.wcp` naming uses `proton-proton_11`, and the internal `versionNam
 That internal value currently drives installation to:
 
 ```text
-/opt/proton-11-1
+/opt/proton-11-arm64ec
 ```
 
 ## Packaging Commands

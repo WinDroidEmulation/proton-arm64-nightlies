@@ -34,7 +34,7 @@ while still keeping the external release naming on `bleeding-edge`.
 **Fix:** Keep the baked install path aligned with the internal profile version. The current workflow bakes:
 
 ```text
-/data/data/com.winlator.cmod/files/imagefs/opt/proton-11-1
+/data/data/com.winlator.cmod/files/imagefs/opt/proton-11-arm64ec
 ```
 
 ## Issue 4: Drift in GameNative patch application
