@@ -320,20 +320,16 @@ log "--- Step 5b: Normalizing Proton 11 launcher layout ---"
 ensure_launcher() {
     local root="$1"
     local candidate
-    local copied_frontend=0
 
     mkdir -p "$root/bin"
 
     if [[ ! -e "$root/bin/wine" ]]; then
         for candidate in \
-            "$root/lib/wine/wine" \
-            "$BUILD_DIR/target/wine" \
             "$BUILD_DIR/target/loader64/wine64" \
             "$BUILD_DIR/target/loader64/wine64.exe.so"; do
             if [[ -f "$candidate" ]]; then
                 cp -f "$candidate" "$root/bin/wine"
-                log "Staged launcher frontend: $candidate -> $root/bin/wine"
-                copied_frontend=1
+                log "Staged Android launcher: $candidate -> $root/bin/wine"
                 break
             fi
         done
@@ -341,10 +337,7 @@ ensure_launcher() {
 
     if [[ ! -e "$root/bin/wine64" ]]; then
         for candidate in \
-            "$root/lib/wine/wine64" \
-            "$root/lib/wine/aarch64-unix/wine64" \
             "$BUILD_DIR/target/loader64/wine64" \
-            "$BUILD_DIR/target/loader64/wine64.exe.so" \
             "$BUILD_DIR/target/loader64/wine64-preloader"; do
             if [[ -f "$candidate" && ! -e "$root/bin/$(basename "$candidate")" ]]; then
                 cp -f "$candidate" "$root/bin/$(basename "$candidate")"
@@ -364,19 +357,6 @@ ensure_launcher() {
     fi
 
     [[ -e "$root/bin/wine" ]] || die "No runnable wine launcher found under $root"
-
-    if [[ "$copied_frontend" -eq 1 && ! -e "$root/bin/wine64" ]]; then
-        for candidate in \
-            "$root/lib/wine/wine64" \
-            "$root/lib/wine/aarch64-unix/wine64" \
-            "$BUILD_DIR/target/loader64/wine64"; do
-            if [[ -f "$candidate" ]]; then
-                cp -f "$candidate" "$root/bin/wine64"
-                log "Staged companion wine64: $candidate -> $root/bin/wine64"
-                break
-            fi
-        done
-    fi
 }
 
 ensure_launcher "$INSTALL_DIR"
